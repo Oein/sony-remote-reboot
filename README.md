@@ -12,6 +12,10 @@ Sony α5000 (ILCE-5000)을 폰·태블릿·PC에서 원격으로 조작하는 �
 <img src="viewer/screenshots/07-gallery.png" width="180" alt="갤러리">
 <img src="viewer/screenshots/08-photo-portrait.png" width="180" alt="사진 보기">
 </p>
+<p>
+<img src="viewer/screenshots/05-landscape.png" width="370" alt="가로 촬영 화면">
+<img src="viewer/screenshots/10-settings.png" width="170" alt="설정">
+</p>
 <img src="docs/web-desktop.png" width="740" alt="PC 브라우저의 웹앱">
 
 ## 할 수 있는 것
