@@ -1,0 +1,91 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.oein.ilceremote'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+
+    defaultConfig {
+        applicationId 'dev.oein.ilceremote'
+        // ILCE-5000 runs Android 2.3.7 (API 10)
+        minSdk 10
+        //noinspection ExpiredTargetSdkVersion
+        targetSdk 10
+        versionCode 60
+        versionName '0.20.2'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // PMCA accepts debug-signed APKs; sign release with the debug key until we need our own
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        // D8 desugars Java 8 language features for API 10; Java 8 *library* APIs are not available
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        // Catch accidental use of APIs newer than the camera's Android 2.3.7
+        error 'NewApi'
+        // Play Store / i18n checks don't apply to a sideloaded camera app
+        disable 'ExpiredTargetSdkVersion', 'MinSdkTooLow', 'OldTargetApi',
+                'PermissionImpliesUnsupportedChromeOsHardware', 'ExportedReceiver',
+                'MissingApplicationIcon', 'SetTextI18n',
+                // RECEIVER_EXPORTED flags only exist on API 33+
+                'UnspecifiedRegisterReceiverFlag'
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach {
+            outputFileName = "ilce-remote-${variant.buildType.name}-${variant.versionName}.apk"
+        }
+    }
+}
+
+// The web app (web/) is minified and gzipped into generated assets, served by ApiServer.
+// Needs Node with web/node_modules installed (cd web && npm install); set node.path in
+// local.properties if Gradle's PATH has no node (e.g. nvm in a GUI-launched Android Studio).
+def webOut = layout.buildDirectory.dir('generated/webAssets')
+def nodePath = {
+    def props = new Properties()
+    def file = rootProject.file('local.properties')
+    if (file.exists()) file.withInputStream { props.load(it) }
+    return props.getProperty('node.path', 'node')
+}
+def buildWeb = tasks.register('buildWeb', Exec) {
+    def src = rootProject.file('web')
+    inputs.files(fileTree(src) { exclude 'node_modules/**', 'package-lock.json' })
+    outputs.dir(webOut)
+    workingDir src
+    commandLine nodePath(), 'build.mjs', webOut.get().dir('web').asFile.path
+}
+android.sourceSets.main.assets.srcDir(webOut)
+tasks.named('preBuild') { dependsOn buildWeb }
+
+dependencies {
+    def omVersion = 'f8df350'
+    implementation "com.github.ma1co.OpenMemories-Framework:framework:$omVersion"
+    compileOnly "com.github.ma1co.OpenMemories-Framework:stubs:$omVersion"
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+}
+
+// Lint only checks our own sources; this also scans bundled libraries for APIs the camera lacks.
+android.applicationVariants.configureEach { variant ->
+    def checkTask = tasks.register("check${variant.name.capitalize()}ApiLevel", Exec) {
+        dependsOn variant.assembleProvider
+        def apk = variant.outputs.first().outputFile
+        commandLine 'python3', "${rootDir}/tools/check-api-level.py", apk, android.defaultConfig.minSdk
+    }
+    variant.assembleProvider.configure { finalizedBy checkTask }
+}

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2a2e"/><stop offset="1" stop-color="#0a0a0b"/></linearGradient>
+    <radialGradient id="barrel" cx="0.4" cy="0.35" r="0.75"><stop offset="0" stop-color="#2c2c31"/><stop offset="1" stop-color="#111113"/></radialGradient>
+    <radialGradient id="iris" cx="0.38" cy="0.32" r="0.8"><stop offset="0" stop-color="#ffc050"/><stop offset="0.55" stop-color="#f39800"/><stop offset="1" stop-color="#c46f00"/></radialGradient>
+  </defs>
+  
+  <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
+  <circle cx="512" cy="540" r="330" fill="url(#barrel)" stroke="#45454b" stroke-width="10"/>
+  <circle cx="512" cy="540" r="292" fill="none" stroke="#2e2e33" stroke-width="6"/>
+  <clipPath id="irisClip"><circle cx="512" cy="540" r="258"/></clipPath>
+  <circle cx="512" cy="540" r="258" fill="url(#iris)"/>
+  <g clip-path="url(#irisClip)" stroke="#0d0d0e" stroke-width="11" stroke-linecap="round"><line x1="600.9" y1="563.8" x2="388.7" y2="775.9"/><line x1="535.8" y1="628.9" x2="246.0" y2="551.2"/><line x1="446.9" y1="605.1" x2="369.3" y2="315.3"/><line x1="423.1" y1="516.2" x2="635.3" y2="304.1"/><line x1="488.2" y1="451.1" x2="778.0" y2="528.8"/><line x1="577.1" y1="474.9" x2="654.7" y2="764.7"/></g>
+  <polygon points="600.9,563.8 535.8,628.9 446.9,605.1 423.1,516.2 488.2,451.1 577.1,474.9" fill="#0d0d0e"/>
+  <path d="M 322 420 A 225 225 0 0 1 472 318" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 696.0 193.9 A 392 392 0 0 1 858.1 356.0" fill="none" stroke="#f39800" stroke-width="30" stroke-linecap="round"/>
+  <path d="M 724.2 140.9 A 452 452 0 0 1 911.1 327.8" fill="none" stroke="#f39800" stroke-width="30" stroke-linecap="round"/></g>
+</svg>

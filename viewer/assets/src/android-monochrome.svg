@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <mask id="m"><rect width="1024" height="1024" fill="#fff"/><line x1="600.9" y1="563.8" x2="388.7" y2="775.9" stroke="#000" stroke-width="16"/><line x1="535.8" y1="628.9" x2="246.0" y2="551.2" stroke="#000" stroke-width="16"/><line x1="446.9" y1="605.1" x2="369.3" y2="315.3" stroke="#000" stroke-width="16"/><line x1="423.1" y1="516.2" x2="635.3" y2="304.1" stroke="#000" stroke-width="16"/><line x1="488.2" y1="451.1" x2="778.0" y2="528.8" stroke="#000" stroke-width="16"/><line x1="577.1" y1="474.9" x2="654.7" y2="764.7" stroke="#000" stroke-width="16"/><polygon points="600.9,563.8 535.8,628.9 446.9,605.1 423.1,516.2 488.2,451.1 577.1,474.9" fill="#000"/></mask>
+  <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
+    <circle cx="512" cy="540" r="258" fill="#fff" mask="url(#m)"/>
+    <circle cx="512" cy="540" r="318" fill="none" stroke="#fff" stroke-width="24"/>
+    <path d="M 696.0 193.9 A 392 392 0 0 1 858.1 356.0" fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round"/><path d="M 724.2 140.9 A 452 452 0 0 1 911.1 327.8" fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round"/>
+  </g>
+</svg>

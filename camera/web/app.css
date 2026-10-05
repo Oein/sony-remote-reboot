@@ -1,0 +1,425 @@
+/* The phone app's styles (viewer/src), value for value: 1 pt there is 1 CSS px here. */
+@font-face { font-family: Ionicons; src: url(ionicons.ttf) format("truetype"); font-display: block; }
+
+:root {
+  /* viewer/src/lib/theme.ts */
+  --bg: #000000;
+  --panel: #0f0f10;
+  --panel-border: #262628;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --text: #ffffff;
+  --dim: #8e8e93;
+  --accent: #f39800;
+  --danger: #ff4d4d;
+  --ok: #3ecf6e;
+  --hair: 0.5px;
+  --tab-h: 49px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Behave like an app, not a page: no text selection or magnifier, no long-press callouts, no
+   dragging images out, no double-tap zoom or tap delay, no rubber-banding at the edges */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  touch-action: manipulation;
+}
+input { -webkit-user-select: auto; user-select: auto; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%; font: 14px/1.19 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", sans-serif; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+[hidden] { display: none !important; }
+.ion { font-family: Ionicons; font-style: normal; font-weight: normal; line-height: 1; -webkit-font-smoothing: antialiased; speak: never; }
+
+/* iOS ActivityIndicator */
+.spinner { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; animation: spin .8s linear infinite; }
+.spinner.small { width: 16px; height: 16px; border-width: 2px; }
+.spinner.accent { border-color: rgba(243, 152, 0, 0.25); border-top-color: var(--accent); transform: scale(.7); }
+.spinner.dark { border-color: rgba(0, 0, 0, 0.2); border-top-color: #000; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner.accent { animation: spin-small .8s linear infinite; }
+@keyframes spin-small { from { transform: scale(.7) rotate(0); } to { transform: scale(.7) rotate(360deg); } }
+
+/* --- screens and tabs (expo-router js-tabs: iOS bottom tab bar, iOS headers) --- */
+.screen { position: fixed; left: 0; right: 0; top: 0; bottom: calc(var(--tab-h) + var(--safe-bottom)); background: var(--bg); }
+#tabs { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--tab-h) + var(--safe-bottom)); padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  display: flex; background: var(--panel); border-top: var(--hair) solid var(--panel-border); z-index: 5; }
+#tabs button { flex: 1; flex-direction: column; gap: 2px; color: var(--dim); padding-top: 4px; }
+#tabs button .ion { font-size: 24px; }
+#tabs button span { font-size: 10px; font-weight: 500; }
+#tabs button.active { color: var(--accent); }
+/* Sideways phones (and wide screens): the compact iOS tab bar, label beside the icon */
+@media (orientation: landscape), (min-width: 768px) { #tabs button { flex-direction: row; gap: 6px; padding-top: 0; } #tabs button span { font-size: 13px; } }
+@media (orientation: landscape) and (max-height: 500px) { :root { --tab-h: 32px; } #tabs button .ion { font-size: 20px; } }
+
+.with-header { display: flex; flex-direction: column; }
+/* Measured from the app: 39 pt under the status bar (32 sideways), no bottom line */
+.nav { flex: none; height: calc(39px + var(--safe-top)); padding: var(--safe-top) calc(var(--safe-right)) 0 calc(var(--safe-left)); display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; background: var(--panel); }
+@media (orientation: landscape) and (max-height: 500px) { .nav { height: calc(44px + var(--safe-top)); } }
+.nav b { font-size: 17px; font-weight: 600; }
+.nav-right { justify-self: end; }
+.header-button { margin-right: 12px; padding: 5px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.14); font-size: 15px; font-weight: 600; }
+
+/* --- 촬영 (app/(tabs)/index.tsx) --- */
+#shoot { display: flex; flex-direction: column; padding: var(--safe-top) var(--safe-right) 0 var(--safe-left); }
+#live-area { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#live-box { position: relative; overflow: hidden; }
+#live { position: absolute; left: 50%; top: 50%; object-fit: contain; background: #000; }
+#offline { position: absolute; inset: 0; flex-direction: column; gap: 8px; padding: 24px; background: var(--panel); text-align: center; }
+#offline b { font-size: 17px; font-weight: 600; }
+#offline span { color: var(--dim); font-size: 13px; line-height: 19px; }
+#magnifier-tap { position: absolute; inset: 0; }
+#af-frames i { position: absolute; border: 2px solid var(--ok); border-radius: 2px; pointer-events: none; }
+#af-frames i.warn { border-color: var(--accent); }
+
+#status { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; pointer-events: none; }
+.status-pill { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--overlay); white-space: nowrap; }
+#dot { width: 7px; height: 7px; border-radius: 3.5px; background: var(--danger); }
+#dot.on { background: var(--ok); }
+.status-text { color: var(--text); font-size: 12px; font-weight: 600; letter-spacing: 0.2px; }
+.status-item { display: flex; align-items: center; gap: 2px; }
+.status-item .ion { font-size: 15px; }
+.status-item.low, .status-item.low .status-text { color: var(--danger); }
+#focus-badge { height: 26px; padding: 0 9px; border-radius: 7px; display: flex; align-items: center; background: var(--overlay); border: 1px solid rgba(255, 255, 255, 0.35);
+  color: var(--text); font-size: 12px; font-weight: 700; letter-spacing: 0.4px; }
+#focus-badge.ok { background: rgba(62, 207, 110, 0.85); border-color: var(--ok); }
+#focus-badge.fail { background: rgba(255, 77, 77, 0.85); border-color: var(--danger); }
+.round-34 { width: 34px; height: 34px; border-radius: 17px; background: var(--overlay); }
+#rotate { position: absolute; right: 10px; top: 10px; }
+body[data-layout=overlay] #rotate { top: 58px; }
+#bottom-overlay { position: absolute; left: 0; right: 0; bottom: 0; }
+
+/* ZoomRocker (components/Controls.tsx) */
+.rocker { display: flex; align-items: stretch; border-radius: 22px; background: var(--overlay); border: var(--hair) solid rgba(255, 255, 255, 0.18); overflow: hidden; width: max-content; }
+.rocker > button { width: 48px; height: 40px; font-size: 15px; font-weight: 600; }
+.rocker > button.pressed { background: rgba(243, 152, 0, 0.35); }
+.rocker .divider { width: var(--hair); margin: 8px 0; background: rgba(255, 255, 255, 0.25); }
+#zoom-track { position: relative; width: 110px; height: 40px; touch-action: none; }
+#zoom-track .line { position: absolute; left: 7px; right: 7px; top: 19px; height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.3); }
+#zoom-thumb { position: absolute; top: 13px; left: 0; width: 14px; height: 14px; border-radius: 7px; background: var(--text); }
+#zoom-thumb.active { background: var(--accent); transform: scale(1.3); }
+body[data-layout=portrait] #zoom { position: absolute; right: 12px; bottom: 12px; }
+body[data-layout=overlay] #zoom { position: absolute; right: 10px; top: 10px; }
+body[data-layout=side] #zoom { margin: 8px auto 0; }
+
+/* Dial: settings as an exposure display */
+#controls { flex: none; padding: 10px 0 6px; }
+#dial { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 12px; border-radius: 16px; background: var(--panel); border: var(--hair) solid var(--hairline); overflow: hidden; }
+.chip { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 4px 12px; min-width: 0; touch-action: pan-y; cursor: pointer;
+  border-left: var(--hair) solid var(--hairline); border-top: var(--hair) solid var(--hairline); }
+#dial .chip:nth-child(4n + 1) { border-left: 0; }
+#dial .chip:nth-child(-n + 4) { border-top: 0; }
+.chip.pressed { background: rgba(255, 255, 255, 0.06); }
+.chip.disabled { opacity: 0.32; }
+.chip small { color: var(--dim); font-size: 11px; font-weight: 500; letter-spacing: 0.2px; white-space: nowrap; }
+.chip b { margin-top: 3px; color: var(--text); font-size: 22px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.chip.dragging b { color: var(--accent); }
+.chip .neighbour { position: absolute; top: 46%; max-width: 30%; overflow: hidden; white-space: nowrap; color: var(--dim); font-size: 11px; opacity: 0.6; }
+.chip .neighbour.left { left: 4px; }
+.chip .neighbour.right { right: 4px; text-align: right; }
+.ticks { width: 54px; height: 8px; margin-top: 5px; overflow: hidden; display: flex; justify-content: center; }
+.tick-row { display: flex; align-items: flex-end; gap: 5px; height: 8px; }
+.tick-row i { display: block; width: 1px; height: 4px; background: var(--dim); }
+.tick-row i:nth-child(5) { height: 7px; }
+.chip.dragging .tick-row i { background: var(--accent); }
+.chip.disabled .ticks { display: none; }
+/* Strip: one row of compact cells laid over the live view */
+#dial.strip { display: flex; margin: 0; border: 0; border-radius: 0; background: rgba(0, 0, 0, 0.62); }
+#dial.strip .chip { flex: 1; padding: 6px 4px 5px; border-top: 0; }
+#dial.strip .chip:first-child { border-left: 0; }
+#dial.strip .chip small { font-size: 10px; }
+#dial.strip .chip b { margin-top: 1px; font-size: 15px; }
+
+/* Manual focus row */
+#mf-row { display: flex; align-items: center; gap: 12px; margin: 16px 16px 0; }
+#mf-row.compact { gap: 10px; margin: 0; padding: 6px 10px; background: rgba(0, 0, 0, 0.45); }
+.focus-button { width: 44px; height: 36px; border-radius: 10px; background: var(--panel); }
+#mf-row.compact .focus-button { width: 38px; height: 30px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); }
+.focus-button:active { opacity: 0.7; }
+#magnify.on { background: var(--accent); color: #000; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#magnify.on .ion { display: none; }
+#focus-bar { flex: 1; min-width: 0; }
+#focus-hint { display: block; color: var(--dim); font-size: 12px; text-align: center; }
+.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-label { color: var(--dim); font-size: 12px; font-weight: 600; }
+.track { position: relative; flex: 1; height: 3px; border-radius: 2px; background: var(--panel-border); }
+#knob { position: absolute; top: -6px; width: 3px; height: 15px; margin-left: -1.5px; border-radius: 2px; background: var(--accent); }
+
+/* Capture bar: latest photo, shutter, half-press */
+#capture { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 14px 32px; }
+#shutter { width: 74px; height: 74px; border-radius: 37px; border: 4px solid var(--text); }
+#shutter .disc { width: 60px; height: 60px; border-radius: 30px; background: var(--text); display: flex; align-items: center; justify-content: center; }
+#shutter:active .disc, #shutter.busy .disc { background: var(--accent); transform: scale(0.92); }
+#af { width: 50px; height: 50px; border-radius: 25px; border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.06); }
+#af:active { background: rgba(255, 255, 255, 0.16); }
+.af-label { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
+#af.focused { border-color: var(--ok); color: var(--ok); }
+#af.failed { border-color: var(--danger); color: var(--danger); }
+#latest { width: 50px; height: 50px; border-radius: 10px; overflow: hidden; background: var(--panel) center/cover no-repeat; border: var(--hair) solid var(--hairline); }
+#latest.has-photo .ion { display: none; }
+.disabled-control { opacity: 0.35; pointer-events: none; }
+#toast { position: absolute; left: 24px; right: 24px; bottom: 24px; padding: 12px; border-radius: 12px; background: rgba(40, 40, 40, 0.95); font-size: 14px; text-align: center; z-index: 4; }
+
+/* Sideways: live view, (side panel,) and a 92 pt column with the shutter */
+body[data-layout=overlay] #shoot, body[data-layout=side] #shoot { bottom: 0; flex-direction: row; padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left); }
+body.on-shoot[data-layout=overlay] #tabs, body.on-shoot[data-layout=side] #tabs { display: none; }
+body[data-layout=overlay] #capture, body[data-layout=side] #capture { width: 92px; flex-direction: column-reverse; justify-content: space-evenly; padding: 6px 0; order: 3; }
+#panel { display: none; }
+body[data-layout=side] #panel { display: block; flex: none; overflow-y: auto; padding: 8px 0 24px; order: 2; }
+body[data-layout=side] #live-area { flex: none; order: 1; }
+body[data-layout=overlay] #controls, body[data-layout=side] #controls { display: none; }
+
+/* --- 연결 (app/(tabs)/settings.tsx) --- */
+.settings { flex: 1; padding: 16px calc(16px + var(--safe-right)) 32px calc(16px + var(--safe-left)); display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.settings > * { flex: none; }
+.settings .section { color: var(--dim); font-size: 13px; font-weight: 600; margin-top: 12px; }
+#host { height: 48px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); font: 17px -apple-system, sans-serif; padding: 0 14px; outline: none; }
+.settings .row { display: flex; gap: 10px; }
+.button { height: 44px; border-radius: 10px; background: var(--accent); padding: 0 18px; color: #000; font-weight: 700; font-size: 15px; }
+.button.secondary { background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); font-weight: 500; }
+.help { color: var(--dim); font-size: 13px; line-height: 19px; }
+.card { background: var(--panel); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.state { font-size: 17px; font-weight: 700; color: var(--danger); }
+.state.on { color: var(--ok); }
+.detail { color: var(--dim); font-size: 13px; }
+.usage-row { display: flex; justify-content: space-between; align-items: baseline; }
+.usage-label { font-size: 15px; font-weight: 600; }
+.usage-value { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+.cache-track { margin-top: 8px; }
+.card-label { color: var(--dim); font-size: 12px; margin-top: 14px; }
+.sizes { display: flex; gap: 6px; margin-top: 4px; }
+.sizes button { flex: 1; height: 34px; border-radius: 8px; border: 1px solid var(--panel-border); font-size: 13px; font-weight: 600; }
+.sizes button.selected { background: var(--accent); border-color: var(--accent); color: #000; }
+
+/* --- 갤러리 (app/(tabs)/gallery.tsx) --- */
+#grid-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+#grid { display: grid; gap: 2px; touch-action: pan-y; }
+.cell { position: relative; aspect-ratio: 1; background: var(--panel) center/cover no-repeat; }
+.cell .raw { position: absolute; left: 4px; bottom: 4px; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); font-size: 10px; font-weight: 700; }
+.cell.selected::before { content: ""; position: absolute; inset: 0; background: rgba(255, 255, 255, 0.18); }
+.cell.selected::after { content: "\f21d"; font-family: Ionicons; position: absolute; right: 5px; bottom: 5px; width: 22px; height: 22px; border-radius: 11px; background: var(--accent);
+  border: 1.5px solid #fff; color: #fff; font-size: 14px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+#grid-footer { padding: 20px; text-align: center; color: var(--dim); font-size: 13px; }
+#grid-footer.error { color: var(--danger); padding: 16px; }
+body.selecting #gallery { bottom: 0; }
+body.selecting #tabs { display: none; }
+#select-bar { position: absolute; left: 0; right: 0; bottom: 0; height: calc(52px + var(--safe-bottom)); padding: 0 8px var(--safe-bottom); display: flex; align-items: center; justify-content: space-between;
+  background: var(--panel); border-top: var(--hair) solid var(--panel-border); }
+body.selecting #grid-scroll { padding-bottom: calc(52px + var(--safe-bottom)); }
+.tool-button { min-width: 44px; height: 44px; padding: 0 8px; }
+.tool-button:active { opacity: 0.6; }
+#select-save { color: var(--accent); }
+#select-save:disabled { color: var(--dim); }
+.toolbar-title { font-size: 15px; font-weight: 600; }
+.tool-link { color: var(--accent); font-size: 15px; }
+.save-progress { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 0 12px; }
+.progress-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); }
+.toolbar-text { color: var(--dim); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.pill-toast { position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; padding: 10px 16px; border-radius: 20px; background: rgba(40, 40, 42, 0.95); font-size: 14px; white-space: nowrap; }
+body.selecting .pill-toast { bottom: calc(52px + var(--safe-bottom) + 12px); }
+
+/* --- 사진 보기 (app/photo/[id].tsx): a stack screen over the tabs --- */
+#viewer { position: fixed; inset: 0; background: #000; z-index: 10; transform: translateX(100%); transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+#viewer.open { transform: none; }
+#viewer-body { position: absolute; inset: 0; display: flex; flex-direction: column; }
+#pages { position: relative; flex: 1; min-height: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior: contain; }
+#pages::-webkit-scrollbar { display: none; }
+#pages.zoomed { overflow: hidden; }
+.page { position: relative; flex: 0 0 100%; height: 100%; scroll-snap-align: center; scroll-snap-stop: always; overflow: hidden; }
+.page .zoom-layer { position: absolute; inset: 0; transform-origin: 0 0; }
+.page img { position: absolute; }
+.page .thumb { inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.page .box { position: absolute; left: 50%; top: 50%; overflow: hidden; }
+.page .box img { left: 50%; top: 50%; }
+.page .box .full { inset: 0; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
+.page .box img, .page .thumb { -webkit-touch-callout: default; }
+/* Upright: the iOS header (transparent, translucent black) and the bottom bar with the strip */
+#viewer-header { position: absolute; left: 0; right: 0; top: 0; height: calc(44px + var(--safe-top)); padding-top: var(--safe-top); display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; background: rgba(0, 0, 0, 0.55); }
+#viewer-header b { font-size: 17px; font-weight: 600; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The iOS 26 header back button, as measured from the app: a grey disc with a black chevron */
+#viewer-back { justify-self: start; width: 44px; height: 44px; margin-left: 16px; border-radius: 22px; background: #848484; color: #000;
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.35); }
+#viewer-back .ion { font-size: 24px; margin-left: -2px; }
+#viewer-topbar { display: none; position: absolute; top: 0; left: 0; right: 0; height: 48px; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.55);
+  padding: 0 calc(var(--safe-right) + 8px) 0 calc(var(--safe-left) + 8px); }
+.back-button { width: 36px; height: 36px; border-radius: 18px; background: rgba(255, 255, 255, 0.12); flex: none; }
+#viewer-topbar b { flex: 1; text-align: center; margin-right: 46px; font-size: 15px; font-weight: 600; text-shadow: 0 0 4px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#viewer-bottom { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); padding: 8px 0 calc(var(--safe-bottom) + 8px); display: flex; flex-direction: column; gap: 8px; }
+#strip { display: flex; overflow-x: auto; scrollbar-width: none; scroll-behavior: auto; }
+#strip::-webkit-scrollbar { display: none; }
+#strip .lead { flex: none; }
+#strip img { flex: none; width: 44px; height: 44px; margin: 0 1px; object-fit: cover; opacity: 0.55; background: var(--panel); border: 0; }
+#strip img.current { opacity: 1; outline: 2px solid var(--text); outline-offset: -2px; }
+.viewer-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; min-height: 44px; }
+.counter { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+.save-wrap { min-width: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+/* The RAW file's download: a small outlined pill beside the JPEG one */
+.raw-button { height: 28px; padding: 0 9px 0 7px; gap: 3px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.4); font-size: 11px; font-weight: 700; letter-spacing: 0.3px; }
+.raw-button .ion { font-size: 15px; }
+.raw-button:disabled { opacity: 0.3; cursor: default; }
+.tool-group { display: flex; align-items: center; gap: 4px; }
+.save-wrap .progress { width: 150px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.save-wrap .progress-track { width: 100%; background: rgba(255, 255, 255, 0.2); }
+.save-wrap .progress-text { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.save-wrap .save-message { color: var(--dim); font-size: 12px; max-width: 200px; text-align: right; }
+#viewer-info { background: #111; padding-top: 14px; }
+.info { padding: 0 16px; display: flex; flex-direction: column; gap: 4px; }
+.info-date { font-size: 15px; font-weight: 600; }
+.exposure { display: flex; gap: 16px; }
+.exposure span { font-size: 15px; font-variant-numeric: tabular-nums; }
+.meta { color: var(--dim); font-size: 12px; white-space: pre-line; }
+#viewer.bare #viewer-header, #viewer.bare #viewer-topbar, #viewer.bare #viewer-bottom { display: none !important; }
+/* Sideways: a slim band of our own, no strip, and the info in a 200 pt panel beside the photo */
+body[data-orientation=landscape] #viewer-header { display: none; }
+body[data-orientation=landscape] #viewer-topbar { display: flex; }
+body[data-orientation=landscape] #viewer-body { flex-direction: row; }
+body[data-orientation=landscape] #strip { display: none; }
+/* The bars stop at the info panel, as in the app */
+body[data-orientation=landscape] #viewer.info-open #viewer-topbar { right: calc(200px + var(--safe-right)); padding-right: 8px; }
+body[data-orientation=landscape] #viewer.info-open #viewer-bottom { right: calc(200px + var(--safe-right)); }
+body[data-orientation=landscape] #viewer-bottom { padding: 0 0 max(4px, calc(var(--safe-bottom) - 14px)); gap: 0; background: rgba(0, 0, 0, 0.45); }
+body[data-orientation=landscape] .viewer-toolbar { min-height: 36px; padding: 0 calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px); }
+body[data-orientation=landscape] #viewer-info { width: calc(200px + var(--safe-right)); padding: 16px var(--safe-right) 0 0; flex: none; }
+body[data-orientation=landscape] .info { padding: 0 14px; gap: 8px; }
+body[data-orientation=landscape] .info-date { font-size: 14px; }
+body[data-orientation=landscape] .exposure { flex-wrap: wrap; row-gap: 4px; column-gap: 0; }
+body[data-orientation=landscape] .exposure span { width: 50%; font-size: 14px; }
+
+/* --- WheelSheet (components/WheelSheet.tsx) --- */
+#sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 20; opacity: 0; transition: opacity .3s; }
+#sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; max-height: 100%; display: flex; flex-direction: column; background: var(--panel); border-radius: 16px 16px 0 0;
+  padding: 0 var(--safe-right) calc(8px + var(--safe-bottom)) var(--safe-left); transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+body.sheet-open #sheet { transform: none; }
+body.sheet-open #sheet-backdrop { opacity: 1; }
+#sheet header { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: var(--hair) solid var(--panel-border); }
+#sheet header b { font-size: 16px; font-weight: 600; }
+#sheet-cancel { color: var(--dim); font-size: 16px; }
+#sheet-done { color: var(--accent); font-size: 16px; font-weight: 700; }
+#sheet-body { overflow-y: auto; }
+.wheel-row { display: flex; padding: 0 8px; }
+.wheel { min-width: 0; }
+.wheel-title { color: var(--dim); font-size: 12px; text-align: center; margin-top: 10px; }
+.wheel-frame { position: relative; height: 216px; perspective: 600px;
+  -webkit-mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
+.wheel.compact .wheel-frame { height: 170px; }
+/* iOS 27 draws its own selection capsule (the app's selectionColor is ignored): measured from the app */
+.wheel-band { position: absolute; left: 9px; right: 9px; top: 50%; height: 43px; margin-top: -21.5px; border-radius: 21.5px; background: #171719; pointer-events: none; }
+.wheel-list { position: relative; height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; padding: 88px 0; touch-action: pan-y;
+  perspective: 300px; }
+.wheel.compact .wheel-list { padding: 65px 0; }
+.wheel-list::-webkit-scrollbar { display: none; }
+.wheel-item { position: relative; height: 40px; line-height: 40px; text-align: center; scroll-snap-align: center; font-size: 21px; color: rgba(235, 235, 245, 0.42);
+  font-variant-numeric: tabular-nums; transform-style: preserve-3d; }
+.wheel-face { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
+.wheel-item.selected { color: var(--text); }
+.wheel.compact .wheel-item { font-size: 19px; }
+
+/* Home screen app: size by 100lvh, not the short viewport iOS reports there (see app.js) */
+html.standalone, html.standalone body { height: 100lvh; }
+html.standalone .screen { bottom: auto; height: calc(100lvh - var(--tab-h) - var(--safe-bottom)); }
+html.standalone body[data-layout=overlay] #shoot, html.standalone body[data-layout=side] #shoot, html.standalone body.selecting #gallery { height: 100lvh; }
+html.standalone #tabs { bottom: auto; top: calc(100lvh - var(--tab-h) - var(--safe-bottom)); }
+html.standalone #viewer, html.standalone #sheet-backdrop { bottom: auto; height: 100lvh; }
+html.standalone #sheet { bottom: auto; top: 100lvh; transform: translateY(0); }
+html.standalone body.sheet-open #sheet { transform: translateY(-100%); }
+
+/* --- Tablets and computers (body.wide, set by app.js) ---
+   An iPad-style sidebar in place of the tab bar, the controls in a column beside the live view,
+   settings in a readable column and the wheels in a dialog */
+body.wide { --rail-w: 220px; }
+@media (max-width: 899px) { body.wide { --rail-w: 84px; } }
+body.wide .screen, html.standalone body.wide .screen { left: calc(var(--rail-w) + var(--safe-left)); bottom: 0; height: auto; }
+html.standalone body.wide .screen { height: 100lvh; }
+body.wide #tabs, html.standalone body.wide #tabs { top: 0; bottom: 0; right: auto; width: calc(var(--rail-w) + var(--safe-left)); height: auto; flex-direction: column; gap: 2px;
+  padding: calc(var(--safe-top) + 12px) 10px calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 10px); border-top: 0; border-right: var(--hair) solid var(--panel-border); }
+body.wide #tabs::before { content: "ILCE Remote"; padding: 6px 12px 14px; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+body.wide #tabs button { flex: none; height: 44px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 0 12px; border-radius: 10px; }
+body.wide #tabs button .ion { font-size: 22px; }
+body.wide #tabs button span { font-size: 15px; font-weight: 600; }
+body.wide #tabs button.active { background: rgba(243, 152, 0, 0.14); }
+@media (max-width: 899px) {
+  body.wide #tabs::before { display: none; }
+  body.wide #tabs button { height: 58px; flex-direction: column; justify-content: center; gap: 4px; padding: 0; }
+  body.wide #tabs button span { font-size: 11px; }
+}
+/* The sidebar stays while choosing photos; the selection bar takes the bottom of the gallery only */
+body.wide.selecting #tabs { display: flex; }
+
+/* 촬영: the live view as large as it goes, the settings, focus and zoom in a column on the right,
+   the shutter under them */
+body[data-layout=desk] #shoot { display: grid; grid-template-columns: minmax(0, 1fr) var(--desk-panel-w, 360px); grid-template-rows: minmax(0, 1fr) auto;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) 0; }
+body[data-layout=desk] #live-area { grid-row: 1 / 3; margin: 16px; }
+body[data-layout=desk] #live-box { border-radius: 12px; }
+body[data-layout=desk] #controls { display: none; }
+body[data-layout=desk] #panel { display: flex; flex-direction: column; gap: 16px; padding: 16px 16px 8px 0; overflow-y: auto; }
+body[data-layout=desk] #dial { margin: 0; }
+body[data-layout=desk] #mf-row { margin: 0; }
+body[data-layout=desk] #zoom { align-self: center; }
+@media (min-width: 1200px) { body[data-layout=desk] { --desk-panel-w: 420px; } }
+#key-hints { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  body[data-layout=desk] #key-hints { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: auto; padding: 0 4px; color: var(--dim); font-size: 12px; }
+}
+kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border-radius: 5px; border: var(--hair) solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.06);
+  font: 600 11px/16px -apple-system, sans-serif; text-align: center; color: var(--text); }
+body[data-layout=desk] #capture { padding: 16px 40px 24px 24px; }
+body[data-layout=desk] #toast { left: 50%; right: auto; width: 420px; max-width: calc(100% - 48px); transform: translateX(-50%); }
+
+/* The same, with the controls under the live view: the settings in one row, then the shutter row */
+body[data-layout=stage] #shoot { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) 0; }
+body[data-layout=stage] #live-area { margin: 16px 16px 12px; }
+body[data-layout=stage] #live-box { border-radius: 12px; }
+body[data-layout=stage] #controls { display: none; }
+body[data-layout=stage] #panel { display: block; padding: 0 16px; }
+body[data-layout=stage] #dial { grid-template-columns: repeat(8, minmax(0, 1fr)); max-width: 1100px; margin: 0 auto; }
+body[data-layout=stage] #dial .chip { padding: 12px 4px 10px; border-top: 0; border-left: var(--hair) solid var(--hairline); }
+body[data-layout=stage] #dial .chip:first-child { border-left: 0; }
+body[data-layout=stage] #capture { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 24px; width: 100%; max-width: 1132px; margin: 0 auto;
+  padding: 14px 16px 18px; }
+.capture-group { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.capture-group.right { justify-content: flex-end; }
+body[data-layout=stage] #mf-row { flex: 0 1 380px; min-width: 0; margin: 0; }
+
+/* Upright tablets: the phone's layout, the controls kept to a comfortable width */
+body.wide[data-layout=portrait] #controls, body.wide[data-layout=portrait] #capture { width: 100%; max-width: 640px; margin: 0 auto; }
+body.wide[data-layout=portrait] #controls { padding-top: 16px; }
+body.wide[data-layout=portrait] #capture { padding-bottom: calc(20px + var(--safe-bottom)); }
+
+/* The photo viewer's info column has room to spare */
+body.wide[data-orientation=landscape] #viewer-info { width: calc(300px + var(--safe-right)); }
+body.wide[data-orientation=landscape] #viewer.info-open #viewer-topbar,
+body.wide[data-orientation=landscape] #viewer.info-open #viewer-bottom { right: calc(300px + var(--safe-right)); }
+body.wide[data-orientation=landscape] .info { padding: 0 20px; }
+
+/* 설정: a readable column */
+body.wide .settings { padding-left: max(24px, calc((100% - 640px) / 2)); padding-right: max(24px, calc((100% - 640px) / 2)); }
+
+/* The wheels in a dialog in the middle rather than a sheet from the bottom edge */
+body.wide #sheet, html.standalone body.wide #sheet { left: 50%; right: auto; top: 50%; bottom: auto; width: min(680px, calc(100% - 48px)); max-height: calc(100% - 48px);
+  padding: 0 0 8px; border-radius: 16px; opacity: 0; transform: translate(-50%, -46%); transition: transform .25s cubic-bezier(.2, .8, .2, 1), opacity .2s; }
+body.wide.sheet-open #sheet, html.standalone body.wide.sheet-open #sheet { opacity: 1; transform: translate(-50%, -50%); }
+
+/* Pointer devices: show what can be clicked */
+@media (hover: hover) and (pointer: fine) {
+  #tabs button:hover:not(.active) { color: var(--text); }
+  body.wide #tabs button:hover:not(.active) { background: rgba(255, 255, 255, 0.06); }
+  .chip:not(.disabled):hover { background: rgba(255, 255, 255, 0.04); }
+  .cell:hover { filter: brightness(1.12); }
+  .button:hover, .header-button:hover, .focus-button:hover, .sizes button:hover { filter: brightness(1.2); }
+  #strip img:hover { opacity: 1; }
+  .wheel-list { cursor: grab; }
+  .wheel-list:active { cursor: grabbing; }
+}

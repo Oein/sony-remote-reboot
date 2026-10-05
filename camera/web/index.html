@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ILCE Remote</title>
+<meta name="theme-color" content="#000000" id="theme-color">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="ILCE Remote">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- Mirrors the phone app (viewer/): same screens, sizes and colours. Icons are Ionicons glyphs. -->
+
+<!-- 촬영 -->
+<main id="shoot" class="screen">
+  <div id="live-area">
+    <div id="live-box">
+      <img id="live" alt="">
+      <button id="offline" hidden>
+        <i class="ion" style="font-size:30px;color:var(--dim)">&#xf632;</i>
+        <b>카메라에 연결되지 않았어요</b>
+        <span>카메라에서 ILCE Remote를 실행하고, 폰을 카메라 Wi-Fi(또는 같은 네트워크)에 연결하세요. 눌러서 주소 설정</span>
+      </button>
+      <div id="af-frames"></div>
+      <div id="magnifier-tap" hidden></div>
+      <div id="corner-zoom"></div>
+      <button id="rotate" class="round-34" hidden aria-label="라이브뷰 돌리기"><i class="ion" style="font-size:18px">&#xf514;</i></button>
+      <div id="status">
+        <div class="status-pill"><i id="dot"></i><span id="model" class="status-text">연결 안 됨</span><span id="battery" class="status-item" hidden><i class="ion"></i><span class="status-text"></span></span><span id="shots" class="status-text" hidden></span><span id="busy" class="spinner small accent" hidden></span></div>
+        <div id="focus-badge" hidden></div>
+      </div>
+      <div id="bottom-overlay"></div>
+    </div>
+  </div>
+  <div id="panel"></div>
+  <!-- Keyboard shortcuts: shown on computers, at the foot of the side column -->
+  <div id="key-hints"><span><kbd>Space</kbd> 촬영</span><span><kbd>F</kbd> 누르는 동안 초점</span><span><kbd>W</kbd> <kbd>T</kbd> 줌</span><span>설정 위에서 스크롤로 값 바꾸기</span></div>
+  <div id="controls">
+    <div id="dial"></div>
+    <div id="mf-row" hidden>
+      <button id="focus-near" class="focus-button" aria-label="초점 가깝게"><i class="ion" style="font-size:18px">&#xf229;</i></button>
+      <div id="focus-bar">
+        <div class="bar-row"><span class="bar-label">가깝게</span><div class="track"><div id="knob"></div></div><span class="bar-label">멀게</span></div>
+        <span id="focus-hint">MF · 렌즈의 초점 링으로 맞추세요</span>
+      </div>
+      <button id="focus-far" class="focus-button" aria-label="초점 멀게"><i class="ion" style="font-size:18px">&#xf23b;</i></button>
+      <button id="magnify" class="focus-button" aria-label="초점 확대"><i class="ion" style="font-size:17px">&#xf55f;</i><span></span></button>
+    </div>
+  </div>
+  <div id="capture">
+    <button id="latest" aria-label="최근 사진, 갤러리 열기"><i class="ion" style="font-size:20px;color:var(--dim)">&#xf392;</i></button>
+    <button id="shutter" aria-label="셔터" title="촬영 (Space)"><span class="disc"><span class="spinner dark" hidden></span></span></button>
+    <button id="af" aria-label="반셔터 (누르고 있으면 초점 고정)" title="반셔터: 누르고 있으면 초점 고정 (F)"><span class="af-label">AF</span><span class="spinner small" hidden></span></button>
+  </div>
+  <div id="zoom" class="rocker">
+    <button data-zoom="wide" aria-label="줌 광각" title="광각 (W)">W</button>
+    <i class="divider"></i>
+    <div id="zoom-track" aria-label="줌 위치"><i class="line"></i><i id="zoom-thumb"></i></div>
+    <i class="divider" id="zoom-track-divider"></i>
+    <button data-zoom="tele" aria-label="줌 망원" title="망원 (T)">T</button>
+  </div>
+  <div id="toast" hidden></div>
+</main>
+
+<!-- 갤러리 -->
+<section id="gallery" class="screen with-header" hidden>
+  <header class="nav"><span></span><b>갤러리</b><span class="nav-right"><button id="select-toggle" class="header-button">선택</button></span></header>
+  <div id="grid-scroll">
+    <div id="grid"></div>
+    <div id="grid-footer"></div>
+  </div>
+  <footer id="select-bar" hidden>
+    <span class="tool-group">
+      <button id="select-save" class="tool-button" aria-label="선택한 사진을 사진 앱에 저장" title="JPEG 원본 받기"><i class="ion" style="font-size:24px">&#xf2ba;</i></button>
+      <button id="select-raw" class="raw-button" aria-label="선택한 사진의 RAW(ARW) 파일 받기" title="RAW(ARW) 파일 받기"><i class="ion">&#xf2ba;</i><span>RAW</span></button>
+    </span>
+    <span id="select-count" class="toolbar-title">항목 선택</span>
+    <button id="select-all" class="tool-button tool-link">모두 선택</button>
+  </footer>
+  <div id="gallery-toast" class="pill-toast" hidden></div>
+</section>
+
+<!-- 설정 -->
+<section id="connect" class="screen with-header" hidden>
+  <header class="nav"><span></span><b>설정</b><span></span></header>
+  <div class="settings">
+    <span class="section">카메라 주소</span>
+    <input id="host" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="decimal" placeholder="192.168.122.1">
+    <div class="row">
+      <button id="host-apply" class="button">적용</button>
+      <button id="host-ap" class="button secondary">카메라 AP (192.168.122.1)</button>
+    </div>
+    <span class="help">카메라가 AP 모드면 폰을 카메라 Wi-Fi에 연결하고 192.168.122.1를 쓰세요. Station 모드면 카메라 화면 위쪽에 나오는 주소를 입력하세요.</span>
+    <span class="section">상태</span>
+    <div class="card"><b id="conn-state" class="state">연결 안 됨</b><span id="conn-detail" class="detail" hidden></span></div>
+    <!-- Thumbnails only: previews and originals are never kept -->
+    <span class="section">썸네일 캐시</span>
+    <div class="card">
+      <div class="usage-row"><span class="usage-label">사용 중</span><span id="cache-usage" class="usage-value"></span></div>
+      <div class="progress-track cache-track"><div id="cache-fill" class="progress-fill"></div></div>
+      <span class="card-label">최대 크기</span>
+      <div id="cache-sizes" class="sizes"></div>
+    </div>
+    <div class="row"><button id="cache-clear" class="button secondary">캐시 비우기</button></div>
+    <span class="help">갤러리 썸네일만 이 기기에 저장해서, 다시 볼 때 카메라에서 받지 않아요. 미리보기와 원본은 저장하지 않아요. 최대 크기를 넘으면 오래 안 본 것부터 지워요.</span>
+  </div>
+</section>
+
+<nav id="tabs">
+  <button data-tab="shoot" class="active"><i class="ion">&#xf1dc;</i><span>촬영</span></button>
+  <button data-tab="gallery"><i class="ion">&#xf392;</i><span>갤러리</span></button>
+  <button data-tab="connect"><i class="ion">&#xf56c;</i><span>설정</span></button>
+</nav>
+
+<!-- 사진 보기 -->
+<div id="viewer" hidden>
+  <div id="viewer-body">
+    <div id="pages"></div>
+    <aside id="viewer-info" hidden></aside>
+  </div>
+  <header id="viewer-header"><button id="viewer-back" aria-label="뒤로"><i class="ion">&#xf229;</i></button><b id="viewer-title">사진</b><span></span></header>
+  <header id="viewer-topbar"><button id="viewer-back2" class="back-button" aria-label="뒤로"><i class="ion" style="font-size:22px">&#xf229;</i></button><b id="viewer-title2"></b></header>
+  <footer id="viewer-bottom">
+    <div id="strip"></div>
+    <div class="viewer-toolbar">
+      <button id="viewer-info-toggle" class="tool-button" aria-label="사진 정보"><i class="ion" style="font-size:26px">&#xf399;</i></button>
+      <span id="viewer-count" class="counter"></span>
+      <div id="viewer-save" class="save-wrap"></div>
+    </div>
+  </footer>
+</div>
+
+<div id="sheet-backdrop" hidden></div>
+<div id="sheet" hidden>
+  <header><button id="sheet-cancel">취소</button><b id="sheet-title"></b><button id="sheet-done">완료</button></header>
+  <div id="sheet-body"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

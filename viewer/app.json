@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "ILCE Remote",
+    "slug": "ilce-remote",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.oein.ilceremote.viewer",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "카메라(ILCE Remote)와 같은 Wi-Fi에서 라이브뷰와 사진을 주고받습니다."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#111113",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "dev.oein.ilceremote.viewer"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withSceneLifecycle",
+      "expo-router",
+      "expo-status-bar",
+      "expo-image",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "카메라에서 받은 사진을 사진 앱에 저장합니다.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
+    ],
+    "scheme": "ilceremote",
+    "backgroundColor": "#000000",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
