@@ -1,15 +1,57 @@
-# ILCE Remote
+# sony-remote-reboot
 
-Sony α5000 (ILCE-5000)용 원격 라이브뷰 / 사진 브라우저.
+Sony α5000 (ILCE-5000)을 폰·태블릿·PC에서 원격으로 조작하는 앱. 카메라 안에서 도는 앱이 라이브뷰와 촬영
+제어, 사진을 HTTP로 내주고, 폰 앱이나 브라우저에서 그걸 씁니다.
+
+카메라 기본 원격 기능보다 더 많은 설정(셔터·조리개·ISO·WB·초점 등)과 갤러리를 폰에서 다루려고 만들었습니다.
+비공식 프로젝트이며 Sony와 관련이 없습니다.
+
+<p>
+<img src="viewer/screenshots/01-shoot.png" width="180" alt="촬영 화면">
+<img src="viewer/screenshots/03-white-balance.png" width="180" alt="화이트 밸런스 휠">
+<img src="viewer/screenshots/07-gallery.png" width="180" alt="갤러리">
+<img src="viewer/screenshots/08-photo-portrait.png" width="180" alt="사진 보기">
+</p>
+<img src="docs/web-desktop.png" width="740" alt="PC 브라우저의 웹앱">
+
+## 할 수 있는 것
+
+- **라이브뷰**: 카메라가 하드웨어로 인코딩한 JPEG 프레임을 그대로 MJPEG으로 스트리밍 (AP 모드 지연 ~0.3초).
+  카메라를 세로로 들면 라이브뷰도 세로로 돌아갑니다.
+- **촬영**: 셔터, 누르고 있는 동안 반셔터(AF), 파워줌(버튼·위치 슬라이더), MF 초점 이동과 초점 확대.
+- **설정**: 촬영 모드, 셔터속도, 조리개, ISO, 노출 보정, 화이트 밸런스(색온도·A-B·G-M), 드라이브, 초점 모드.
+  설정 칸을 좌우로 끌어 바로 바꾸거나, 눌러서 iOS 피커 같은 휠로 고릅니다. 마지막 설정은 앱을 다시 켜도 복원.
+- **갤러리**: 카메라 카드의 사진을 격자로 보고, 사진 앱처럼 넘기며 보기·확대, EXIF 정보, 여러 장 선택(끌어서 선택)해
+  원본 JPEG 또는 RAW(ARW) 받기. 썸네일은 기기에 캐시(최대 크기 설정 가능).
+- **세 가지 클라이언트**
+  - 폰 앱 (`viewer/`, Expo/React Native): 사진 앱에 바로 저장.
+  - 웹앱 (`camera/web/`): 카메라가 직접 제공하는 PWA. 설치 없이 브라우저에서 `http://<카메라 IP>:8080/`,
+    iOS는 홈 화면에 추가하면 앱처럼 실행. 폰에서는 폰 앱과 같은 화면이고, 태블릿·PC에서는 사이드바와 큰 라이브뷰,
+    키보드 단축키(Space 촬영, F 반셔터, W/T 줌)와 마우스 휠 조작을 씁니다.
+  - HTTP API: 아래 표 참고. 스크립트에서 바로 써도 됩니다.
+
+## 구조
 
 ```
-camera/   카메라에 사이드로드하는 Android 앱 (OpenMemories, Android 2.3.7 / API 10)
-viewer/   폰에서 쓰는 Expo(React Native) 뷰어 앱
+camera/       카메라에 설치하는 Android 앱 (OpenMemories, Android 2.3.7 / API 10)
+camera/web/   카메라가 제공하는 웹앱 소스 (빌드 때 minify·gzip 되어 APK에 들어감)
+viewer/       폰 앱 (Expo SDK 57) 과 카메라 없이 개발하는 mock 서버
 ```
 
-카메라가 Wi-Fi AP(`192.168.122.1`)가 되고, 폰이 거기 접속해서 카메라의 HTTP API를 사용합니다.
+카메라가 Wi-Fi AP(`192.168.122.1`)가 되어 폰이 직접 붙거나, 카메라를 집 Wi-Fi에 붙여(Station 모드) 같은
+네트워크에서 씁니다. 카메라 화면 위쪽에 주소가 표시됩니다.
 
-실기기 확인 (2026-09-28): ILCE-5000, 펌웨어 1.10, PMCA API 3, Android 2.3.7 (SDK 10) — 빈 앱 설치/실행 OK.
+## 시작하기
+
+1. 카메라에 앱 설치: 아래 [설치](#설치) (USB, [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE) 사용).
+2. 카메라 메뉴 → 애플리케이션 → ILCE Remote 실행.
+3. 폰을 카메라 Wi-Fi에 연결하고
+   - 브라우저로 `http://192.168.122.1:8080/` 를 열거나,
+   - 폰 앱 설정 탭에서 카메라 주소를 넣습니다.
+
+실기기 확인: ILCE-5000, 펌웨어 1.10, PMCA API 3, Android 2.3.7. 다른 기종은 확인하지 않았습니다.
+
+> 카메라에 비공식 앱을 설치하는 것은 본인 책임입니다. 이 앱은 펌웨어를 고치지 않고 OpenMemories 앱으로만 동작합니다.
 
 ## camera — 개발 환경
 
@@ -71,7 +113,7 @@ CAMERA_IP=172.16.1.151 camera/tools/dev-install.sh
 
 ## viewer — 폰 앱 (Expo SDK 57)
 
-촬영(라이브뷰, 셔터/반셔터, 줌, 휠로 설정 변경, AF/MF), 갤러리(사진 방향 처리, 원본 저장), 연결(카메라 주소) 탭.
+촬영(라이브뷰, 셔터/반셔터, 줌, 휠로 설정 변경, AF/MF), 갤러리(사진 방향 처리, 원본 저장), 설정(카메라 주소, 썸네일 캐시) 탭.
 폰을 가로로 돌리면 라이브뷰를 크게, 카메라를 세로로 들면 라이브뷰를 세로로 돌려 보여준다.
 
 ```sh
@@ -138,7 +180,7 @@ AP 모드 실측: preview ~0.6s, full(4MB) ~2.6s.
 네트워크 메모: 집 공유기(Station) 환경에서는 2.4GHz 혼잡으로 큰 패킷 손실이 커서 스트림이 끊길 수 있음.
 AP 모드(폰 직결)에서는 부드럽고 지연 ~0.3s.
 
-## 참고
+## 참고 / 감사
 
 - [Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE) — 설치 도구
 - [OpenMemories-Framework](https://github.com/ma1co/OpenMemories-Framework) — `com.sony.scalar.*` 스텁 + 래퍼
