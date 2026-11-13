@@ -10,22 +10,29 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * The last shooting settings, kept on the memory card. The camera shuts Android down abruptly when
- * the app is left, which loses SharedPreferences writes still in the page cache; this file is
- * synced to the card on every write. 8.3 name, as the card is mounted without long names.
+ * Settings kept on the memory card. The camera shuts Android down abruptly when the app is left,
+ * which loses SharedPreferences writes still in the page cache; these files are synced to the card
+ * on every write. 8.3 names, as the card is mounted without long names.
  */
 final class SettingsFile {
-    private static final File FILE = new File(Environment.getExternalStorageDirectory(), "ILCEREMO/LASTSET.JSN");
+    /** The last shooting settings. */
+    static final File LAST_SETTINGS = file("LASTSET.JSN");
+    /** The app's own MENU settings: network mode, live view effect, zoom speed. */
+    static final File MENU = file("MENUSET.JSN");
 
     private SettingsFile() {}
 
+    private static File file(String name) {
+        return new File(Environment.getExternalStorageDirectory(), "ILCEREMO/" + name);
+    }
+
     /** The saved text, or null if there is none. */
-    static String read() {
-        if (!FILE.isFile()) {
+    static String read(File file) {
+        if (!file.isFile()) {
             return null;
         }
         try {
-            InputStream in = new FileInputStream(FILE);
+            InputStream in = new FileInputStream(file);
             try {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1024];
@@ -38,18 +45,18 @@ final class SettingsFile {
                 in.close();
             }
         } catch (IOException e) {
-            Logger.error("Reading " + FILE + " failed", e);
+            Logger.error("Reading " + file + " failed", e);
             return null;
         }
     }
 
-    static void write(String text) {
+    static void write(File file, String text) {
         try {
-            File dir = FILE.getParentFile();
+            File dir = file.getParentFile();
             if (!dir.isDirectory() && !dir.mkdirs()) {
                 return;
             }
-            FileOutputStream out = new FileOutputStream(FILE);
+            FileOutputStream out = new FileOutputStream(file);
             try {
                 out.write(text.getBytes("UTF-8"));
                 out.getFD().sync();
@@ -57,7 +64,7 @@ final class SettingsFile {
                 out.close();
             }
         } catch (IOException e) {
-            Logger.error("Writing " + FILE + " failed", e);
+            Logger.error("Writing " + file + " failed", e);
         }
     }
 }

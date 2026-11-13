@@ -32,7 +32,7 @@
       <div id="corner-zoom"></div>
       <button id="rotate" class="round-34" hidden aria-label="라이브뷰 돌리기"><i class="ion" style="font-size:18px">&#xf514;</i></button>
       <div id="status">
-        <div class="status-pill"><i id="dot"></i><span id="model" class="status-text">연결 안 됨</span><span id="battery" class="status-item" hidden><i class="ion"></i><span class="status-text"></span></span><span id="shots" class="status-text" hidden></span><span id="busy" class="spinner small accent" hidden></span></div>
+        <div class="status-pill"><i id="dot"></i><span id="model" class="status-text">연결 안 됨</span><span id="battery" class="status-item" hidden><i class="ion"></i><span class="status-text"></span></span><span id="shots" class="status-text" hidden></span><span id="rec-time" class="status-text" hidden></span><span id="busy" class="spinner small accent" hidden></span></div>
         <div id="focus-badge" hidden></div>
       </div>
       <div id="bottom-overlay"></div>
@@ -40,7 +40,7 @@
   </div>
   <div id="panel"></div>
   <!-- Keyboard shortcuts: shown on computers, at the foot of the side column -->
-  <div id="key-hints"><span><kbd>Space</kbd> 촬영</span><span><kbd>F</kbd> 누르는 동안 초점</span><span><kbd>W</kbd> <kbd>T</kbd> 줌</span><span>설정 위에서 스크롤로 값 바꾸기</span></div>
+  <div id="key-hints"><span><kbd>Space</kbd> 촬영</span><span><kbd>F</kbd> 누르는 동안 초점</span><span><kbd>R</kbd> 녹화</span><span><kbd>W</kbd> <kbd>T</kbd> 줌</span><span>설정 위에서 스크롤로 값 바꾸기</span></div>
   <div id="controls">
     <div id="dial"></div>
     <div id="mf-row" hidden>
@@ -57,6 +57,7 @@
     <button id="latest" aria-label="최근 사진, 갤러리 열기"><i class="ion" style="font-size:20px;color:var(--dim)">&#xf392;</i></button>
     <button id="shutter" aria-label="셔터" title="촬영 (Space)"><span class="disc"><span class="spinner dark" hidden></span></span></button>
     <button id="af" aria-label="반셔터 (누르고 있으면 초점 고정)" title="반셔터: 누르고 있으면 초점 고정 (F)"><span class="af-label">AF</span><span class="spinner small" hidden></span></button>
+    <button id="rec" aria-label="동영상 녹화" title="동영상 녹화 시작/정지 (R)"><span class="rec-mark"></span><span class="spinner small" hidden></span></button>
   </div>
   <div id="zoom" class="rocker">
     <button data-zoom="wide" aria-label="줌 광각" title="광각 (W)">W</button>
@@ -70,15 +71,20 @@
 
 <!-- 갤러리 -->
 <section id="gallery" class="screen with-header" hidden>
-  <header class="nav"><span></span><b>갤러리</b><span class="nav-right"><button id="select-toggle" class="header-button">선택</button></span></header>
+  <header class="nav"><span></span><div id="gallery-kind" class="segmented"><button data-kind="photos" class="active">사진</button><button data-kind="movies">동영상</button></div><span class="nav-right"><button id="select-toggle" class="header-button">선택</button></span></header>
   <div id="grid-scroll">
     <div id="grid"></div>
     <div id="grid-footer"></div>
+  </div>
+  <div id="movie-scroll" hidden>
+    <div id="movie-grid"></div>
+    <div id="movie-footer"></div>
   </div>
   <footer id="select-bar" hidden>
     <span class="tool-group">
       <button id="select-save" class="tool-button" aria-label="선택한 사진을 사진 앱에 저장" title="JPEG 원본 받기"><i class="ion" style="font-size:24px">&#xf2ba;</i></button>
       <button id="select-raw" class="raw-button" aria-label="선택한 사진의 RAW(ARW) 파일 받기" title="RAW(ARW) 파일 받기"><i class="ion">&#xf2ba;</i><span>RAW</span></button>
+      <button id="select-delete" class="tool-button delete-button" aria-label="선택한 사진 삭제" title="카메라에서 삭제"><i class="ion" style="font-size:22px">&#xf5f6;</i></button>
     </span>
     <span id="select-count" class="toolbar-title">항목 선택</span>
     <button id="select-all" class="tool-button tool-link">모두 선택</button>
@@ -129,11 +135,20 @@
   <footer id="viewer-bottom">
     <div id="strip"></div>
     <div class="viewer-toolbar">
-      <button id="viewer-info-toggle" class="tool-button" aria-label="사진 정보"><i class="ion" style="font-size:26px">&#xf399;</i></button>
+      <span class="tool-group">
+        <button id="viewer-info-toggle" class="tool-button" aria-label="사진 정보"><i class="ion" style="font-size:26px">&#xf399;</i></button>
+        <button id="viewer-delete" class="tool-button delete-button" aria-label="이 사진 삭제" title="카메라에서 삭제"><i class="ion" style="font-size:22px">&#xf5f6;</i></button>
+      </span>
       <span id="viewer-count" class="counter"></span>
       <div id="viewer-save" class="save-wrap"></div>
     </div>
   </footer>
+</div>
+
+<!-- 동영상 재생: the camera serves byte ranges, so it plays and seeks while it streams -->
+<div id="player" hidden>
+  <video id="player-video" controls playsinline preload="metadata"></video>
+  <header id="player-header"><button id="player-back" class="back-button" aria-label="뒤로"><i class="ion" style="font-size:22px">&#xf229;</i></button><b id="player-title"></b><a id="player-save" class="header-button" download>받기</a></header>
 </div>
 
 <div id="sheet-backdrop" hidden></div>

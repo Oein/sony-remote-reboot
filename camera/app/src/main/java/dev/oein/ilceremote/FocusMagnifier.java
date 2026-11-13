@@ -10,8 +10,8 @@ import org.json.JSONObject;
 import java.util.List;
 
 /**
- * The camera's focus magnifier: enlarges the live view around a point to check focus, as the
- * Play button does here (the app has no playback). Positions are -1000..1000 from the frame
+ * The camera's focus magnifier: enlarges the live view around a point to check focus, turned on
+ * from the phone. Positions are -1000..1000 from the frame
  * center; at factor f the visible window can move up to 1000 - 1000 / f. UI thread only.
  */
 final class FocusMagnifier {

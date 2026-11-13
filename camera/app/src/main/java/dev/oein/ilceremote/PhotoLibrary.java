@@ -516,6 +516,35 @@ public class PhotoLibrary {
         }
     }
 
+    /**
+     * Deletes a photo (JPEG and RAW) through the camera's media index, so the camera's own
+     * playback stays in step; files the index left behind are removed directly. Also drops the
+     * cached thumbnails. True if no file of the photo remains.
+     */
+    public boolean delete(long id) {
+        Location location = locate(id);
+        if (location == null) {
+            return false;
+        }
+        File jpeg = location.file("JPG");
+        File raw = location.file("ARW");
+        try {
+            boolean done = AvindexStore.Images.Media.deleteImage(resolver, URI, id);
+            Logger.info("Delete " + location.name + " via the index: " + done);
+        } catch (Throwable t) {
+            Logger.error("Delete " + location.name + " via the index failed", t);
+        }
+        for (File file : new File[] { jpeg, raw }) {
+            if (file.exists() && !file.delete()) {
+                Logger.info("Could not delete " + file);
+            }
+        }
+        new File(SMALL_CACHE, location.shortKey() + ".JPG").delete();
+        microFile(location.folderNumber(), location.fileNumber()).delete();
+        shotBytesForId = -1;
+        return !jpeg.exists() && !raw.exists();
+    }
+
     /** The media index's internal key for a photo (what AvindexGraphics and friends take), or null. */
     public String indexKeyFor(long id) {
         return indexKey(id);

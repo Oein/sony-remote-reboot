@@ -203,11 +203,22 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         prefs = getPreferences(MODE_PRIVATE);
         modes = new NetworkMode[] { new StationMode(this), new AccessPointMode(this) };
-        modeIndex = prefs.getInt(PREF_MODE, MODE_STATION) == MODE_ACCESS_POINT ? MODE_ACCESS_POINT : MODE_STATION;
-        controls.setLeverZoomSpeed(prefs.getInt(PREF_ZOOM_SPEED, controls.getLeverZoomSpeed()));
-        liveView.setPreviewEffect(prefs.getBoolean(PREF_PREVIEW_EFFECT, true));
+        // Only picked here; onResume brings the network up in this mode
+        JSONObject menuSettings = readMenuSettings();
+        modeIndex = menuSettings.optInt(PREF_MODE, prefs.getInt(PREF_MODE, MODE_STATION)) == MODE_ACCESS_POINT
+                ? MODE_ACCESS_POINT : MODE_STATION;
+        controls.setLeverZoomSpeed(menuSettings.optInt(PREF_ZOOM_SPEED,
+                prefs.getInt(PREF_ZOOM_SPEED, controls.getLeverZoomSpeed())));
+        liveView.setPreviewEffect(menuSettings.optBoolean(PREF_PREVIEW_EFFECT,
+                prefs.getBoolean(PREF_PREVIEW_EFFECT, true)));
         photos = new PhotoLibrary(this);
         cameraControl = new CameraControl(liveView, controls);
+        cameraControl.movie().setListener(new MovieRecorder.Listener() {
+            @Override
+            public void onMovieChanged() {
+                render();
+            }
+        });
         server = new ApiServer(liveView, photos, cameraControl, BuildConfig.DEBUG ? new Runnable() {
             @Override
             public void run() {
@@ -333,6 +344,7 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         menu.close();
         picker.close();
         orientation.stop();
+        cameraControl.movie().abort();
         liveView.stop();
         if (openingSubscreen) {
             // Wi-Fi settings: stay reachable from the phone meanwhile
@@ -459,13 +471,18 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
                 openModePicker();
                 return true;
             case ScalarInput.ISV_KEY_PLAY:
-                // Photos are browsed on the phone, so Play is the focus magnifier here
-                controls.magnifier().cycle();
-                return true;
-            case ScalarInput.ISV_KEY_STASTOP:
-                // Movie button: the app doesn't record video, so it toggles AF / MF instead
+                // Photos are browsed on the phone, so Play toggles AF / MF here
                 controls.toggleManualFocus();
                 refreshState();
+                render();
+                return true;
+            case ScalarInput.ISV_KEY_STASTOP:
+                try {
+                    cameraControl.toggleMovie();
+                } catch (Throwable t) {
+                    // e.g. a Sony method this firmware lacks: never worth leaving the app over
+                    Logger.error("Movie button failed", t);
+                }
                 render();
                 return true;
             default:
@@ -477,7 +494,7 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         }
     }
 
-    /** While magnified: arrows move the window, Enter centers it, Play steps up / turns it off. */
+    /** While magnified: arrows move the window, Enter centers it, MENU turns it off. */
     private boolean onMagnifierKey(int scanCode) {
         FocusMagnifier magnifier = controls.magnifier();
         if (!magnifier.isOn()) {
@@ -687,9 +704,7 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
             @Override
             public void change(int direction) {
                 liveView.setPreviewEffect(!liveView.getPreviewEffect());
-                // Written now: leaving the app shuts Android down before a background write lands
-                //noinspection ApplySharedPref
-                prefs.edit().putBoolean(PREF_PREVIEW_EFFECT, liveView.getPreviewEffect()).commit();
+                rememberMenuSettings();
             }
 
             @Override
@@ -712,9 +727,7 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
             @Override
             public void change(int direction) {
                 controls.setLeverZoomSpeed(controls.getLeverZoomSpeed() + direction);
-                // Written now: leaving the app shuts Android down before a background write lands
-                //noinspection ApplySharedPref
-                prefs.edit().putInt(PREF_ZOOM_SPEED, controls.getLeverZoomSpeed()).commit();
+                rememberMenuSettings();
             }
 
             @Override
@@ -836,9 +849,7 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
     private void switchMode(int index) {
         stopMode();
         modeIndex = index;
-        // Written now: leaving the app shuts Android down before a background write lands
-        //noinspection ApplySharedPref
-        prefs.edit().putInt(PREF_MODE, index).commit();
+        rememberMenuSettings();
         Logger.info("Switched to " + modes[index].getName());
         startMode();
     }
@@ -919,6 +930,33 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         }
     }
 
+    // --- menu settings -------------------------------------------------------------------------
+    // Network mode, live view effect and zoom speed. Earlier versions kept them in the preferences,
+    // which lose a change made just before leaving the app; now they go to the card like the
+    // shooting settings, and the preferences are only read when the card has none yet.
+
+    /** The saved MENU settings; empty if there are none (or they can't be read). */
+    private static JSONObject readMenuSettings() {
+        String saved = SettingsFile.read(SettingsFile.MENU);
+        if (saved != null) {
+            try {
+                return new JSONObject(saved);
+            } catch (JSONException e) {
+                Logger.error("Bad menu settings: " + saved, e);
+            }
+        }
+        return new JSONObject();
+    }
+
+    /** Written at once: leaving the app shuts Android down before a later write would land. */
+    private void rememberMenuSettings() {
+        SettingsFile.write(SettingsFile.MENU, new JSONObjectBuilder()
+                .put(PREF_MODE, modeIndex)
+                .put(PREF_PREVIEW_EFFECT, liveView.getPreviewEffect())
+                .put(PREF_ZOOM_SPEED, controls.getLeverZoomSpeed())
+                .build().toString());
+    }
+
     // --- last settings ---------------------------------------------------------------------------
     // The camera doesn't keep the app's shooting settings between launches, so the app puts back
     // the ones last used: mode, focus, ISO, EV, white balance, drive, shutter and aperture.
@@ -965,14 +1003,14 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         String snapshot = settingsSnapshot().toString();
         if (!snapshot.equals(rememberedSettings)) {
             rememberedSettings = snapshot;
-            SettingsFile.write(snapshot);
+            SettingsFile.write(SettingsFile.LAST_SETTINGS, snapshot);
         }
     }
 
     /** Once per launch, as soon as the camera is readable. Stepping shutter/aperture takes a while, so off the UI thread. */
     private void restoreLastSettings() throws JSONException {
         settingsRestored = true;
-        String saved = SettingsFile.read();
+        String saved = SettingsFile.read(SettingsFile.LAST_SETTINGS);
         if (saved == null) {
             // Earlier versions kept them in the preferences
             saved = prefs.getString(PREF_LAST_SETTINGS, null);
@@ -1004,6 +1042,8 @@ public class MainActivity extends BaseActivity implements NetworkMode.Listener {
         osd.setNetwork(networkLine());
         osd.setShotsLeft(shotsLeft);
         osd.setBattery(batteryPercent);
+        MovieRecorder movie = cameraControl.movie();
+        osd.setMovie(movie.getStatus(), movie.getSeconds(), movie.getRemainSeconds());
         osd.setState(state, controls.activeSetting());
     }
 

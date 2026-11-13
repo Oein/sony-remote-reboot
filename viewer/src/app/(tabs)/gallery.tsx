@@ -3,6 +3,7 @@ import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   PanResponder,
   Pressable,
@@ -16,8 +17,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PhotoItem } from '@/lib/camera';
+import { MovieGrid } from '@/components/MovieGrid';
 import { ThumbImage } from '@/components/ThumbImage';
 import { useCamera } from '@/lib/CameraProvider';
+import { DELETE_DETAIL, deletePhotos, deleteQuestion, usePhotosDeleted } from '@/lib/deletions';
 import { canSaveToPhotos, megabytes, saveOriginal, type DownloadProgress } from '@/lib/save';
 import { colors } from '@/lib/theme';
 
@@ -67,6 +70,8 @@ export default function GalleryScreen() {
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [saving, setSaving] = useState<Saving | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  /** 사진 or 동영상, switched in the title bar. */
+  const [kind, setKind] = useState<'photos' | 'movies'>('photos');
 
   // First page whenever the camera (re)appears; state is only set from the async callbacks
   useEffect(() => {
@@ -112,21 +117,40 @@ export default function GalleryScreen() {
     setSelected(new Set());
   }, []);
 
-  // "선택" / "취소" in the title bar, and the selection toolbar in place of the tab bar
+  // 사진 | 동영상 and "선택" / "취소" in the title bar, and the selection toolbar in place of the tab bar
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
-        <Pressable
-          onPress={selecting ? stopSelecting : () => setSelecting(true)}
-          disabled={!!saving || items.length === 0}
-          style={({ pressed }) => [styles.headerButton, pressed && { opacity: 0.6 }]}
-          accessibilityRole="button">
-          <Text style={styles.headerButtonText}>{selecting ? '취소' : '선택'}</Text>
-        </Pressable>
+      headerTitle: () => (
+        <View style={styles.segmented}>
+          {(['photos', 'movies'] as const).map((k) => (
+            <Pressable
+              key={k}
+              onPress={() => {
+                if (k === kind) return;
+                stopSelecting();
+                setKind(k);
+              }}
+              style={[styles.segment, k === kind && styles.segmentActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: k === kind }}>
+              <Text style={[styles.segmentText, k === kind && styles.segmentTextActive]}>{k === 'photos' ? '사진' : '동영상'}</Text>
+            </Pressable>
+          ))}
+        </View>
       ),
+      headerRight: () =>
+        kind === 'movies' ? null : (
+          <Pressable
+            onPress={selecting ? stopSelecting : () => setSelecting(true)}
+            disabled={!!saving || items.length === 0}
+            style={({ pressed }) => [styles.headerButton, pressed && { opacity: 0.6 }]}
+            accessibilityRole="button">
+            <Text style={styles.headerButtonText}>{selecting ? '취소' : '선택'}</Text>
+          </Pressable>
+        ),
       tabBarStyle: selecting ? { display: 'none' } : { backgroundColor: colors.panel, borderTopColor: colors.panelBorder },
     });
-  }, [navigation, selecting, saving, items.length, stopSelecting]);
+  }, [navigation, selecting, saving, items.length, stopSelecting, kind]);
 
   const toggle = (id: number) =>
     setSelected((prev) => {
@@ -159,6 +183,36 @@ export default function GalleryScreen() {
     setSaving(null);
     setSaveMessage(failed === 0 ? `${ids.length}장을 사진 앱에 저장했어요` : `${ids.length - failed}장 저장, ${failed}장 실패`);
     if (failed === 0) stopSelecting();
+  };
+
+  // Gone from the camera, here or in the viewer
+  usePhotosDeleted((ids) => {
+    const gone = new Set(ids);
+    setItems((prev) => prev.filter((item) => !gone.has(item.id)));
+    setTotal((prev) => (prev === null ? prev : Math.max(0, prev - ids.length)));
+    setSelected((prev) => new Set([...prev].filter((id) => !gone.has(id))));
+  });
+
+  const deleteSelected = () => {
+    if (selected.size === 0 || saving) return;
+    const ids = items.filter((item) => selected.has(item.id)).map((item) => item.id);
+    Alert.alert(deleteQuestion(ids.length), DELETE_DETAIL, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          setSaveMessage(null);
+          try {
+            const r = await deletePhotos(client, ids);
+            setSaveMessage(r.failed.length ? `${r.deleted.length}장 삭제, ${r.failed.length}장 실패` : `${r.deleted.length}장을 삭제했어요`);
+            if (!r.failed.length) stopSelecting();
+          } catch (e) {
+            setSaveMessage(`삭제 실패: ${String(e)}`);
+          }
+        },
+      },
+    ]);
   };
 
   const baseColumns = Math.max(3, Math.round(width / THUMB_TARGET));
@@ -285,6 +339,10 @@ export default function GalleryScreen() {
     },
   };
 
+  if (kind === 'movies') {
+    return <MovieGrid client={client} connected={connected} width={width} />;
+  }
+
   if (!connected && items.length === 0) {
     return (
       <View style={styles.center}>
@@ -387,14 +445,24 @@ export default function GalleryScreen() {
             </View>
           ) : (
             <>
-              <Pressable
-                onPress={saveSelected}
-                disabled={selected.size === 0}
-                style={({ pressed }) => [styles.toolButton, pressed && { opacity: 0.6 }]}
-                accessibilityRole="button"
-                accessibilityLabel="선택한 사진을 사진 앱에 저장">
-                <Ionicons name="download-outline" size={24} color={selected.size === 0 ? colors.textDim : colors.accent} />
-              </Pressable>
+              <View style={styles.toolGroup}>
+                <Pressable
+                  onPress={saveSelected}
+                  disabled={selected.size === 0}
+                  style={({ pressed }) => [styles.toolButton, pressed && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="선택한 사진을 사진 앱에 저장">
+                  <Ionicons name="download-outline" size={24} color={selected.size === 0 ? colors.textDim : colors.accent} />
+                </Pressable>
+                <Pressable
+                  onPress={deleteSelected}
+                  disabled={selected.size === 0}
+                  style={({ pressed }) => [styles.toolButton, pressed && { opacity: 0.6 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="선택한 사진 삭제">
+                  <Ionicons name="trash-outline" size={22} color={selected.size === 0 ? colors.textDim : colors.danger} />
+                </Pressable>
+              </View>
               <Text style={styles.toolbarTitle}>{selected.size > 0 ? `${selected.size}장의 사진이 선택됨` : '항목 선택'}</Text>
               <Pressable onPress={toggleAll} style={styles.toolButton} accessibilityRole="button">
                 <Text style={styles.toolLink}>{allSelected ? '선택 해제' : '모두 선택'}</Text>
@@ -424,6 +492,11 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, padding: 16, textAlign: 'center' },
   headerButton: { marginRight: 12, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.14)' },
   headerButtonText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  segmented: { flexDirection: 'row', padding: 2, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.1)' },
+  segment: { paddingHorizontal: 16, paddingVertical: 4, borderRadius: 7 },
+  segmentActive: { backgroundColor: 'rgba(255,255,255,0.22)' },
+  segmentText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
+  segmentTextActive: { color: colors.text },
   badge: {
     position: 'absolute',
     left: 4,
@@ -461,6 +534,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.panelBorder,
   },
   toolButton: { minWidth: 44, height: 44, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+  toolGroup: { flexDirection: 'row', alignItems: 'center' },
   toolbarTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   toolLink: { color: colors.accent, fontSize: 15 },
   toolbarText: { color: colors.textDim, fontSize: 13, textAlign: 'center', fontVariant: ['tabular-nums'] },

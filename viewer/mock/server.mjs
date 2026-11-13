@@ -1,6 +1,6 @@
 // Mock of the ILCE Remote camera API, for developing the viewer without the camera.
 // usage: npm run mock   (port 8080; samples from `swift mock/generate-samples.swift`)
-import { readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 
@@ -14,8 +14,18 @@ const liveFrames = Array.from({ length: 20 }, (_, i) => read(`live-${String(i).p
 const sampleMeta = JSON.parse(read('photos.json'));
 
 // Newest last; ids grow as "shots" are taken
-const photos = sampleMeta.map((m, i) => ({ ...m, sample: m.id, taken: Date.UTC(2026, 8, 20 + (i % 8), 9 + i, 30) }));
+// MOCK_PHOTOS=n repeats the samples to n photos (to try paging)
+const photos = Array.from({ length: Number(process.env.MOCK_PHOTOS ?? sampleMeta.length) }, (_, i) => {
+  const m = sampleMeta[i % sampleMeta.length];
+  return { ...m, id: i + 1, sample: m.id, taken: Date.UTC(2026, 8, 20 + (i % 8), 9 + i, 30) };
+});
 let nextId = photos.length + 1;
+
+// Movies: samples/movie.mp4 (+ movie.jpg as its thumbnail) if there is one, listed three times
+const movieFile = new URL('movie.mp4', samples);
+const movies = existsSync(movieFile)
+  ? [10004899, 10004900, 10004901].map((id, i) => ({ id, name: `MAH0${4899 + i}.MP4`, size: statSync(movieFile).size, date: Date.UTC(2026, 9, 18, 20, 43 + i), duration: 12.5 }))
+  : [];
 
 const SHUTTER = [[30, 1], [15, 1], [8, 1], [4, 1], [2, 1], [1, 1], [1, 2], [1, 4], [1, 8], [1, 15], [1, 30], [1, 60], [1, 125], [1, 250], [1, 500], [1, 1000], [1, 2000], [1, 4000]];
 const APERTURE = [3.5, 4, 4.5, 5, 5.6, 6.3, 7.1, 8, 9, 10, 11, 13, 14, 16, 18, 20, 22];
@@ -63,6 +73,7 @@ function cameraState() {
     shutter: [n, d],
     shutterText: n === 1 && d > 1 ? `1/${d}` : `${n / d}"`,
     aperture: APERTURE[state.apertureIndex],
+    movie: movieState(),
   };
 }
 
@@ -97,6 +108,13 @@ const body = (req) => new Promise((resolve) => {
 });
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+let movieStartedAt = null;
+const movieState = () => ({
+  status: movieStartedAt ? 'recording' : 'idle',
+  seconds: movieStartedAt ? Math.floor((Date.now() - movieStartedAt) / 1000) : 0,
+  remainSeconds: 1740,
+});
+
 let frameIndex = 0;
 setInterval(() => (frameIndex = (frameIndex + 1) % liveFrames.length), 1000 / 12);
 
@@ -122,6 +140,14 @@ const server = createServer(async (req, res) => {
       const sample = ((nextId - 1) % sampleMeta.length) + 1;
       photos.push({ ...sampleMeta[sample - 1], id: nextId++, sample, taken: Date.now() });
       return json(res, 200, { status: 'ok', ms: 150 });
+    }
+    if (path === '/api/camera/movie' && post) {
+      // The camera reopens in movie mode first: starting and stopping take a moment
+      const { action = 'toggle' } = await body(req);
+      const start = action === 'start' || (action === 'toggle' && !movieStartedAt);
+      await delay(start ? 1200 : 900);
+      movieStartedAt = start ? (movieStartedAt ?? Date.now()) : null;
+      return json(res, 200, movieState());
     }
     if (path === '/api/camera/focus' && post) {
       const { action } = await body(req);
@@ -185,6 +211,13 @@ const server = createServer(async (req, res) => {
       await delay(80);
       return json(res, 200, { total: photos.length, offset, items });
     }
+    if (path === '/api/photos/delete' && post) {
+      const { ids } = await body(req);
+      const deleted = ids.filter((id) => photos.some((p) => p.id === id));
+      for (const id of deleted) photos.splice(photos.findIndex((p) => p.id === id), 1);
+      await delay(200);
+      return json(res, 200, { deleted, failed: ids.filter((id) => !deleted.includes(id)) });
+    }
     const match = path.match(/^\/api\/photos\/(\d+)(?:\/(thumb|small|preview|full|raw))?$/);
     if (match) {
       const photo = photos.find((p) => p.id === Number(match[1]));
@@ -208,6 +241,26 @@ const server = createServer(async (req, res) => {
       const raw = read(`full-${photo.sample}.jpg`);
       res.writeHead(200, { 'Content-Type': 'image/x-sony-arw', 'Content-Length': raw.length, 'Content-Disposition': `inline; filename="_DSC${4000 + photo.id}.ARW"` });
       return res.end(raw);
+    }
+    if (path === '/api/movies') {
+      await delay(80);
+      return json(res, 200, { total: movies.length, offset: 0, items: [...movies].reverse() });
+    }
+    const movieMatch = path.match(/^\/api\/movies\/(\d+)\/(thumb|file)$/);
+    if (movieMatch) {
+      if (!movies.some((m) => m.id === Number(movieMatch[1]))) return json(res, 404, { error: 'not found' });
+      if (movieMatch[2] === 'thumb') return jpeg(res, read(existsSync(new URL('movie.jpg', samples)) ? 'movie.jpg' : 'small-1.jpg'));
+      // Byte ranges, as the camera serves them
+      const size = statSync(movieFile).size;
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+      if (!range) {
+        res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': size, 'Accept-Ranges': 'bytes' });
+        return createReadStream(movieFile).pipe(res);
+      }
+      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(size - 1, Number(range[2])) : size - 1;
+      res.writeHead(206, { 'Content-Type': 'video/mp4', 'Content-Length': end - start + 1, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${size}` });
+      return createReadStream(movieFile, { start, end }).pipe(res);
     }
     // The camera's web app, as the camera serves it
     if (!path.startsWith('/api/')) {

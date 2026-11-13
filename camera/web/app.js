@@ -48,6 +48,7 @@
     state: function () { return request('/api/camera'); },
     apply: function (changes) { return post('/api/camera', changes, 20000); },
     shoot: function () { return post('/api/camera/shutter', {}, 35000); },
+    movie: function (action) { return post('/api/camera/movie', { action: action }, 15000); },
     focus: function (action) { return post('/api/camera/focus', { action: action }, 6000); },
     focusDrive: function (direction) { return post('/api/camera/focusdrive', { direction: direction, speed: 0 }); },
     zoom: function (direction) { return post('/api/camera/zoom', { direction: direction, speed: 0 }); },
@@ -55,6 +56,7 @@
     magnify: function (action, dx, dy) { return post('/api/camera/magnify', { action: action, dx: dx || 0, dy: dy || 0 }); },
     photos: function (offset, limit) { return request('/api/photos?offset=' + offset + '&limit=' + limit); },
     photo: function (id) { return request('/api/photos/' + id); },
+    movies: function (offset, limit) { return request('/api/movies?offset=' + offset + '&limit=' + limit); },
   };
   // Images are cached by URL and photo ids can be reused, so the capture time versions them
   function photoUrl(item, kind) { return '/api/photos/' + item.id + '/' + kind + '?v=' + item.date; }
@@ -327,7 +329,9 @@
   // --- live view (components/LiveView.tsx) --------------------------------------------------------
 
   var live = $('live');
-  function startLive() { if (!document.hidden) live.src = '/api/liveview?t=' + Date.now(); }
+  // Paused while a movie plays, which needs all of the camera's Wi-Fi
+  var livePaused = false;
+  function startLive() { if (!document.hidden && !livePaused) live.src = '/api/liveview?t=' + Date.now(); }
   live.onerror = function () {
     // The stream drops when Wi-Fi hiccups; reconnect
     setTimeout(function () { if (connected) startLive(); }, 1000);
@@ -388,6 +392,7 @@
   // Where the dial, the focus row and the zoom control go in each layout
   var captureLeft = el('div', 'capture-group left');
   var captureRight = el('div', 'capture-group right');
+  var captureExtra = el('div', 'capture-extra');
   function placeControls(mode) {
     var dial = $('dial'), mf = $('mf-row'), zoom = $('zoom');
     var capture = $('capture'), latestButton = $('latest'), afButtonEl = $('af');
@@ -397,7 +402,9 @@
       captureLeft.appendChild(zoom);
       captureRight.appendChild(mf);
       captureRight.appendChild(afButtonEl);
+      captureRight.appendChild($('rec'));
       capture.insertBefore(captureLeft, capture.firstChild);
+      if (captureExtra.parentNode) capture.removeChild(captureExtra);
       capture.appendChild(captureRight);
       $('panel').appendChild(dial);
       $('shoot').appendChild($('key-hints'));
@@ -406,7 +413,10 @@
       return;
     }
     capture.insertBefore(latestButton, $('shutter'));
-    capture.appendChild(afButtonEl);
+    // AF and record share the shutter's right side, so the shutter stays centred
+    captureExtra.appendChild(afButtonEl);
+    captureExtra.appendChild($('rec'));
+    capture.appendChild(captureExtra);
     if (captureLeft.parentNode) capture.removeChild(captureLeft);
     if (captureRight.parentNode) capture.removeChild(captureRight);
     if (mode !== 'desk') $('shoot').appendChild($('key-hints'));
@@ -462,8 +472,16 @@
       battery.classList.toggle('low', s.battery <= 15);
     }
     var shots = $('shots');
-    shots.hidden = !(connected && s && s.shotsLeft >= 0);
-    if (!shots.hidden) shots.textContent = s.shotsLeft + '장';
+    // While a movie is on, recording time left takes the place of shots left
+    var remain = movieActive() && s.movie ? s.movie.remainSeconds : -1;
+    if (connected && s && movieActive()) {
+      shots.hidden = !(remain >= 0);
+      if (!shots.hidden) shots.textContent = '남은 ' + formatRecTime(remain);
+    } else {
+      shots.hidden = !(connected && s && s.shotsLeft >= 0);
+      if (!shots.hidden) shots.textContent = s.shotsLeft + '장';
+    }
+    renderMovie();
     $('busy').hidden = !busy;
     var badge = $('focus-badge');
     badge.hidden = !s;
@@ -472,7 +490,11 @@
       badge.className = af === 'focused' ? 'ok' : af === 'failed' ? 'fail' : '';
     }
     $('rotate').hidden = !(connected && !cameraKnowsOrientation());
-    each([$('shutter'), $('af'), $('zoom')], function (b) { b.classList.toggle('disabled-control', !connected); });
+    each([$('shutter'), $('af'), $('zoom'), $('rec')], function (b) { b.classList.toggle('disabled-control', !connected); });
+    if (connected && movieActive()) {
+      $('shutter').classList.add('disabled-control');
+      $('af').classList.add('disabled-control');
+    }
     if (!s) return;
     renderAfFrames();
     renderDial();
@@ -851,6 +873,45 @@
     });
   };
 
+  // Movie: the camera reopens in movie mode first, so starting and stopping take a second or two
+  var recButton = $('rec');
+  var recPending = false;
+  function movieStatus() { return state && state.movie ? state.movie.status : 'idle'; }
+  function movieActive() { return movieStatus() !== 'idle'; }
+  function formatRecTime(seconds) {
+    var h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, sec = seconds % 60;
+    var ss = (sec < 10 ? '0' : '') + sec;
+    return h > 0 ? h + ':' + (m < 10 ? '0' : '') + m + ':' + ss : m + ':' + ss;
+  }
+  function renderMovie() {
+    var status = movieStatus();
+    var recording = connected && status === 'recording';
+    var switching = recPending || status === 'starting' || status === 'stopping';
+    recButton.classList.toggle('recording', recording);
+    recButton.classList.toggle('busy', switching);
+    recButton.querySelector('.spinner').hidden = !switching;
+    recButton.setAttribute('aria-label', recording ? '녹화 정지' : '동영상 녹화');
+    var time = $('rec-time');
+    time.hidden = !recording;
+    if (recording) time.textContent = 'REC ' + formatRecTime(state.movie.seconds || 0);
+  }
+  recButton.onclick = function () {
+    if (recPending || !connected) return;
+    var status = movieStatus();
+    if (status === 'starting' || status === 'stopping') return;
+    var action = status === 'recording' ? 'stop' : 'start';
+    recPending = true;
+    haptic(15);
+    renderMovie();
+    api.movie(action).then(function (m) {
+      if (state) state.movie = m;
+      if (m.error) toast('녹화 실패: ' + m.error);
+    }, function (e) { toast('녹화 실패: ' + e.message); }).then(function () {
+      recPending = false;
+      render();
+    });
+  };
+
   // HoldButton: half-press while held, like the camera's shutter button
   var afButton = $('af');
   function setAf(value) {
@@ -1022,6 +1083,7 @@
     // iOS blends the theme colour under the status bar: match what each screen shows there
     $('theme-color').setAttribute('content', name === 'shoot' ? '#000000' : '#0f0f10');
     if (name === 'gallery' && connected && !galleryLoaded) { galleryLoaded = true; loadPhotos(true); }
+    if (name === 'gallery' && galleryKind === 'movies' && connected) loadMovies();
     if (name === 'gallery') layoutGrid();
     if (name === 'shoot') render();
   }
@@ -1091,6 +1153,7 @@
     g.style.gridTemplateColumns = 'repeat(' + columns() + ', minmax(0, 1fr))';
     // WebKit keeps painting the old columns after a rotation unless the grid is laid out afresh
     g.style.display = 'none'; void g.offsetHeight; g.style.display = '';
+    maybeLoadMore();
   }
 
   function loadPhotos(reset) {
@@ -1105,6 +1168,7 @@
       $('grid-footer').classList.remove('error');
       renderFooter();
       updateSelectBar();
+      maybeLoadMore();
     }, function (e) {
       loading = false;
       $('grid-footer').classList.add('error');
@@ -1129,11 +1193,13 @@
   }
 
   var gridScroll = $('grid-scroll');
-  gridScroll.addEventListener('scroll', function () {
-    // onEndReachedThreshold 1.5: the next page when within one and a half screens of the end
-    if (!loading && total !== null && photos.length < total &&
+  // onEndReachedThreshold 1.5: the next page when within one and a half screens of the end. Also
+  // after each page and layout change: a page that doesn't fill a wide screen never scrolls
+  function maybeLoadMore() {
+    if (gridScroll && !loading && total !== null && photos.length < total && !$('gallery').hidden && !gridScroll.hidden &&
         gridScroll.scrollTop + gridScroll.clientHeight * 2.5 > gridScroll.scrollHeight) loadPhotos(false);
-  });
+  }
+  gridScroll.addEventListener('scroll', maybeLoadMore);
 
   // "선택" / "취소" in the title bar; the selection toolbar takes the tab bar's place
   function setSelecting(on, firstIndex) {
@@ -1154,6 +1220,7 @@
     var n = selectedIds().length;
     $('select-count').textContent = n > 0 ? n + '장의 사진이 선택됨' : '항목 선택';
     $('select-save').disabled = n === 0;
+    $('select-delete').disabled = n === 0;
     $('select-raw').disabled = !selectedIds().some(function (id) { return (photoById(id) || {}).raw; });
     $('select-all').textContent = n > 0 && n === photos.length ? '선택 해제' : '모두 선택';
   }
@@ -1339,6 +1406,33 @@
     });
   }
 
+  // Deleting removes the photo (JPEG and RAW) from the card for good, so it asks first
+  function deletePhotos(ids) {
+    if (!ids.length || saving) return Promise.resolve(null);
+    var what = ids.length === 1 ? '이 사진을' : ids.length + '장의 사진을';
+    if (!window.confirm(what + ' 카메라에서 삭제할까요?\nJPEG와 RAW 파일이 모두 지워지고 되돌릴 수 없어요.')) return Promise.resolve(null);
+    return post('/api/photos/delete', { ids: ids }, 60000).then(function (r) {
+      removePhotos(r.deleted);
+      galleryToast(r.failed.length ? r.deleted.length + '장 삭제, ' + r.failed.length + '장 실패' : r.deleted.length + '장을 삭제했어요');
+      return r;
+    }, function (e) { galleryToast('삭제 실패: ' + e.message); return null; });
+  }
+  function removePhotos(ids) {
+    var gone = {};
+    ids.forEach(function (id) { gone[id] = true; delete selected[id]; });
+    photos = photos.filter(function (p) { return !gone[p.id]; });
+    if (total !== null) total = Math.max(0, total - ids.length);
+    $('grid').innerHTML = '';
+    photos.forEach(function (item, i) { addCell(item, i); if (selected[item.id]) $('grid').lastChild.classList.add('selected'); });
+    renderFooter();
+    updateSelectBar();
+    maybeLoadMore();
+    refreshLatest();
+  }
+  $('select-delete').onclick = function () {
+    deletePhotos(selectedIds()).then(function (r) { if (r && !r.failed.length) setSelecting(false); });
+  };
+
   // --- 사진 보기 (photo/[id].tsx) -------------------------------------------------------------------
 
   var viewerIndex = 0;
@@ -1377,6 +1471,15 @@
     viewer.classList.remove('open');
     setTimeout(function () { viewer.hidden = true; pages.innerHTML = ''; }, 350);
   }
+  $('viewer-delete').onclick = function () {
+    var item = photos[viewerIndex];
+    if (!item) return;
+    deletePhotos([item.id]).then(function (r) {
+      if (!r || !r.deleted.length) return;
+      if (!photos.length) closeViewer();
+      else openViewer(Math.min(viewerIndex, photos.length - 1));
+    });
+  };
   $('viewer-back').onclick = closeViewer;
   $('viewer-back2').onclick = closeViewer;
 
@@ -1619,6 +1722,85 @@
   document.addEventListener('dragstart', function (e) { e.preventDefault(); });
   document.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input')) e.preventDefault(); });
 
+  // --- 동영상 ------------------------------------------------------------------------------------------
+  // MP4 movies, listed apart from the photos ("사진 | 동영상" in the title bar). AVCHD isn't listed:
+  // browsers can't play it
+
+  var galleryKind = 'photos';
+  var movies = [];
+  var moviesLoading = false;
+  each(document.querySelectorAll('#gallery-kind button'), function (b) {
+    b.onclick = function () { setGalleryKind(b.getAttribute('data-kind')); };
+  });
+  function setGalleryKind(kind) {
+    if (kind === galleryKind) return;
+    galleryKind = kind;
+    if (selecting) setSelecting(false);
+    each(document.querySelectorAll('#gallery-kind button'), function (b) { b.classList.toggle('active', b.getAttribute('data-kind') === kind); });
+    $('grid-scroll').hidden = kind !== 'photos';
+    $('movie-scroll').hidden = kind !== 'movies';
+    $('select-toggle').style.visibility = kind === 'photos' ? '' : 'hidden';
+    if (kind === 'movies') { layoutMovies(); if (connected) loadMovies(); }
+    else layoutGrid();
+  }
+  function layoutMovies() {
+    $('movie-grid').style.gridTemplateColumns = 'repeat(' + Math.max(2, columns() - 1) + ', minmax(0, 1fr))';
+  }
+  // A short list, so it is loaded whole each time the tab is shown
+  function loadMovies() {
+    if (moviesLoading) return;
+    moviesLoading = true;
+    var footer = $('movie-footer');
+    footer.classList.remove('error');
+    if (!movies.length) { footer.innerHTML = ''; footer.appendChild(el('span', 'spinner')); }
+    api.movies(0, 500).then(function (page) {
+      moviesLoading = false;
+      movies = page.items;
+      var grid = $('movie-grid');
+      grid.innerHTML = '';
+      movies.forEach(function (item) {
+        var cell = el('div', 'cell');
+        cell.style.backgroundImage = 'url("/api/movies/' + item.id + '/thumb?v=' + item.date + '")';
+        cell.appendChild(el('span', 'play'));
+        if (item.duration > 0) cell.appendChild(el('span', 'duration', formatRecTime(Math.floor(item.duration))));
+        cell.onclick = function () { openPlayer(item); };
+        grid.appendChild(cell);
+      });
+      footer.textContent = movies.length ? '동영상 ' + page.total + '개' : '동영상이 없어요';
+    }, function (e) {
+      moviesLoading = false;
+      footer.classList.add('error');
+      footer.textContent = String(e.message);
+    });
+  }
+
+  var player = $('player');
+  var playerVideo = $('player-video');
+  function openPlayer(item) {
+    livePaused = true;
+    live.removeAttribute('src');
+    $('player-title').textContent = item.name;
+    var url = '/api/movies/' + item.id + '/file';
+    $('player-save').href = url;
+    $('player-save').setAttribute('download', item.name);
+    playerVideo.src = url;
+    player.hidden = false;
+    var started = playerVideo.play();
+    if (started && started.catch) started.catch(function () { /* autoplay refused: the controls are there */ });
+  }
+  function closePlayer() {
+    playerVideo.pause();
+    playerVideo.removeAttribute('src');
+    playerVideo.load();
+    player.hidden = true;
+    livePaused = false;
+    if (connected) startLive();
+  }
+  $('player-back').onclick = closePlayer;
+  playerVideo.onerror = function () {
+    if (!player.hidden && playerVideo.getAttribute('src')) $('player-title').textContent += ' · 재생할 수 없어요';
+  };
+
   // --- keyboard (computers, tablets with one) --------------------------------------------------------
   // Space shoots, F held half-presses, W/T held zoom; in the photo viewer the arrows turn pages,
   // I shows the info and Esc closes; 1-3 switch tabs
@@ -1628,7 +1810,10 @@
   document.addEventListener('keydown', function (e) {
     if (e.target.closest && e.target.closest('input') || e.metaKey || e.ctrlKey || e.altKey) return;
     var key = e.key.toLowerCase();
-    if (!$('sheet').hidden) {
+    if (!player.hidden) {
+      if (key === 'escape') closePlayer();
+      else return;
+    } else if (!$('sheet').hidden) {
       if (key === 'escape') closeSheet();
       else if (key === 'enter') $('sheet-done').onclick();
       else return;
@@ -1645,6 +1830,8 @@
       setSelecting(false);
     } else if (tab === 'shoot' && (key === ' ' || key === 'enter')) {
       if (!e.repeat) shutter.onclick();
+    } else if (tab === 'shoot' && key === 'r') {
+      if (!e.repeat) recButton.onclick();
     } else if (tab === 'shoot' && key === 'f') {
       if (!e.repeat) afPress();
     } else if (tab === 'shoot' && keyZoom[key]) {
@@ -1667,6 +1854,7 @@
   function relayout() {
     applyWide();
     layoutGrid();
+    layoutMovies();
     try { render(); } catch (e) { /* the shooting screen re-lays itself out when shown */ }
     if (!viewer.hidden) { sizeStrip(); refitPages(); pages.scrollLeft = viewerIndex * pages.clientWidth; showPage(viewerIndex); }
   }

@@ -156,6 +156,94 @@ public class LiveView implements SurfaceHolder.Callback {
         Logger.info("LiveView sequence started " + frameWidth + "x" + frameHeight + " rate=" + frameRate);
     }
 
+    interface ReopenCallback {
+        /** The reopened camera, or null if reopening failed. UI thread. */
+        void onReopened(CameraEx camera);
+    }
+
+    /**
+     * Reopens the camera for movie or still recording, keeping the shooting settings, and restarts
+     * the frame sequence on it. Direct shutter comes back on for stills only. UI thread.
+     */
+    public void reopen(final boolean movie, final ReopenCallback done) {
+        if (cameraEx == null) {
+            done.onReopened(null);
+            return;
+        }
+        stopSequence();
+        try {
+            // Not every option exists on every firmware (fw 1.10 lacks setMovieMode): set what's there
+            CameraEx.OpenOptions options = new CameraEx.OpenOptions();
+            logMethodsOnce(options.getClass());
+            options.setRecordingMode(movie ? CameraEx.RECORDING_MODE_MOVIE : CameraEx.RECORDING_MODE_STILL);
+            try {
+                options.setInheritSetting(true);
+            } catch (Throwable t) {
+                Logger.error("LiveView: setInheritSetting unavailable", t);
+            }
+            try {
+                options.setPreview(true);
+            } catch (Throwable t) {
+                Logger.error("LiveView: setPreview unavailable", t);
+            }
+            cameraEx.reopen(options, new CameraEx.OpenCallback() {
+                @Override
+                public void onReopened(final CameraEx camera) {
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            reopened(camera, movie, done);
+                        }
+                    });
+                }
+            });
+        } catch (Throwable t) {
+            Logger.error("LiveView: reopen " + (movie ? "movie" : "still") + " failed", t);
+            reopened(cameraEx, false, null);
+            done.onReopened(null);
+        }
+    }
+
+    private static final java.util.Set<String> methodsLogged = new java.util.HashSet<String>();
+
+    /** Logs what this firmware's class really has, since the OpenMemories stubs don't match every model. */
+    static void logMethodsOnce(Class<?> type) {
+        if (!methodsLogged.add(type.getName())) {
+            return;
+        }
+        StringBuilder text = new StringBuilder();
+        for (Method m : type.getDeclaredMethods()) {
+            text.append(' ').append(m.getName());
+        }
+        Logger.info(type.getName() + " methods:" + text);
+    }
+
+    private void reopened(CameraEx camera, boolean movie, ReopenCallback done) {
+        if (cameraEx == null) {
+            // Stopped meanwhile
+            if (done != null) {
+                done.onReopened(null);
+            }
+            return;
+        }
+        if (camera != null) {
+            cameraEx = camera;
+        }
+        Logger.info("LiveView: reopened for " + (movie ? "movie" : "stills"));
+        try {
+            applyPreviewEffect();
+            if (!movie) {
+                cameraEx.startDirectShutter();
+            }
+            startSequence();
+        } catch (Throwable t) {
+            Logger.error("LiveView: restart after reopen failed", t);
+        }
+        if (done != null) {
+            done.onReopened(cameraEx);
+        }
+    }
+
     /** Work to run on the UI thread with the open camera. */
     public interface CameraTask<T> {
         T run(CameraEx camera) throws Exception;

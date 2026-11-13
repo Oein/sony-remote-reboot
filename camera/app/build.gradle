@@ -13,8 +13,8 @@ android {
         minSdk 10
         //noinspection ExpiredTargetSdkVersion
         targetSdk 10
-        versionCode 60
-        versionName '0.20.2'
+        versionCode 66
+        versionName '0.22.1'
     }
 
     buildTypes {

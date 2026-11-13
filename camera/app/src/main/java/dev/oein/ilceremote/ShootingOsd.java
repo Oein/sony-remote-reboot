@@ -33,6 +33,7 @@ class ShootingOsd {
     private final ImageView focusIcon;
     private String shownFocus;
     private final TextView network;
+    private final TextView rec;
     private final TextView shots;
     private final OsdIcons.Battery batteryIcon;
     private final ImageView battery;
@@ -73,6 +74,9 @@ class ShootingOsd {
         network.setMaxLines(2);
         network.setPadding(dp(10), 0, dp(10), dp(4));
         shots = text(15, true);
+        rec = text(15, true);
+        rec.setTextColor(0xffff3030);
+        rec.setVisibility(View.GONE);
         batteryIcon = new OsdIcons.Battery((int) (dp(26) * SonyIcons.X_SCALE), dp(13));
         battery = new ImageView(context);
         battery.setImageDrawable(batteryIcon);
@@ -84,6 +88,8 @@ class ShootingOsd {
         top.addView(focusIcon);
         top.addView(focusMode);
         top.addView(new View(context), new LinearLayout.LayoutParams(0, 1, 1));
+        top.addView(rec);
+        top.addView(spacer(12));
         top.addView(shots);
         top.addView(spacer(12));
         top.addView(battery);
@@ -192,9 +198,48 @@ class ShootingOsd {
         network.setText(text);
     }
 
+    private int shotsLeft = -1;
+    private boolean movieActive;
+    private int movieRemain = -1;
+
     void setShotsLeft(int count) {
-        shots.setVisibility(count >= 0 ? View.VISIBLE : View.GONE);
-        shots.setText(String.valueOf(count));
+        shotsLeft = count;
+        renderRemaining();
+    }
+
+    /** Shots left, or while a movie is on the recording time left, as the camera's own screen does. */
+    private void renderRemaining() {
+        if (movieActive) {
+            shots.setVisibility(movieRemain >= 0 ? View.VISIBLE : View.GONE);
+            shots.setText(formatTime(movieRemain));
+        } else {
+            shots.setVisibility(shotsLeft >= 0 ? View.VISIBLE : View.GONE);
+            shots.setText(String.valueOf(shotsLeft));
+        }
+    }
+
+    /** 0:12, 29:00, 1:05:00 */
+    private static String formatTime(int seconds) {
+        int h = seconds / 3600;
+        int m = seconds / 60 % 60;
+        int s = seconds % 60;
+        return h > 0 ? String.format(Locale.US, "%d:%02d:%02d", h, m, s) : String.format(Locale.US, "%d:%02d", m, s);
+    }
+
+    /**
+     * Movie status (MovieRecorder.IDLE etc.), recording time ("REC 0:12" in red while recording)
+     * and time left on the card (-1 unknown), which takes the place of shots left.
+     */
+    void setMovie(int status, int seconds, int remainSeconds) {
+        movieActive = status != MovieRecorder.IDLE;
+        movieRemain = remainSeconds;
+        renderRemaining();
+        rec.setVisibility(status == MovieRecorder.IDLE ? View.GONE : View.VISIBLE);
+        if (status == MovieRecorder.RECORDING) {
+            rec.setText("REC " + formatTime(seconds));
+        } else {
+            rec.setText(status == MovieRecorder.STARTING ? "REC ..." : "STBY ...");
+        }
     }
 
     void setBattery(int percent) {

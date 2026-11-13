@@ -23,6 +23,8 @@ Sony α5000 (ILCE-5000)을 폰·태블릿·PC에서 원격으로 조작하는 �
 - **라이브뷰**: 카메라가 하드웨어로 인코딩한 JPEG 프레임을 그대로 MJPEG으로 스트리밍 (AP 모드 지연 ~0.3초).
   카메라를 세로로 들면 라이브뷰도 세로로 돌아갑니다.
 - **촬영**: 셔터, 누르고 있는 동안 반셔터(AF), 파워줌(버튼·위치 슬라이더), MF 초점 이동과 초점 확대.
+- **동영상**: 카메라의 MOVIE 버튼이나 앱의 녹화 버튼으로 녹화 시작/정지. 형식·화질은 카메라 자체의 동영상 설정을 따릅니다. 녹화 중에는 남은 장수 대신 남은 녹화 시간을 표시하고, 시작/정지 때 효과음이 납니다. 갤러리의 **사진 | 동영상** 전환으로 MP4 동영상을 폰·브라우저에서 바로 재생(스트리밍)하거나 받을 수 있습니다 (AVCHD는 목록에 없음).
+  카메라의 Play 버튼은 AF/MF 전환입니다.
 - **설정**: 촬영 모드, 셔터속도, 조리개, ISO, 노출 보정, 화이트 밸런스(색온도·A-B·G-M), 드라이브, 초점 모드.
   설정 칸을 좌우로 끌어 바로 바꾸거나, 눌러서 iOS 피커 같은 휠로 고릅니다. 마지막 설정은 앱을 다시 켜도 복원.
 - **갤러리**: 카메라 카드의 사진을 격자로 보고, 사진 앱처럼 넘기며 보기·확대, EXIF 정보, 여러 장 선택(끌어서 선택)해
@@ -31,7 +33,7 @@ Sony α5000 (ILCE-5000)을 폰·태블릿·PC에서 원격으로 조작하는 �
   - 폰 앱 (`viewer/`, Expo/React Native): 사진 앱에 바로 저장.
   - 웹앱 (`camera/web/`): 카메라가 직접 제공하는 PWA. 설치 없이 브라우저에서 `http://<카메라 IP>:8080/`,
     iOS는 홈 화면에 추가하면 앱처럼 실행. 폰에서는 폰 앱과 같은 화면이고, 태블릿·PC에서는 사이드바와 큰 라이브뷰,
-    키보드 단축키(Space 촬영, F 반셔터, W/T 줌)와 마우스 휠 조작을 씁니다.
+    키보드 단축키(Space 촬영, F 반셔터, R 녹화, W/T 줌)와 마우스 휠 조작을 씁니다.
   - HTTP API: 아래 표 참고. 스크립트에서 바로 써도 됩니다.
 
 ## 구조
@@ -150,6 +152,7 @@ EXPO_PUBLIC_CAMERA_HOST=127.0.0.1 npx expo start   # 시뮬레이터 + 목 서�
 | `GET /api/camera` | 촬영 설정: `mode`(program/aperture/shutter/manual/auto/other), `iso`+`isoValues`(0=AUTO), `shutter`[n,d]+`shutterText`, `aperture`, `ev`/`evMin`/`evMax`/`evStep`, `whiteBalance`(+Values), `driveMode`(+Values), `focusMode` |
 | `POST /api/camera` | JSON 으로 변경 후 새 상태 반환: `mode`, `iso`, `ev`, `whiteBalance`, `driveMode`, `shutter`("1/250"), `shutterStep`(+빠르게), `aperture`(5.6), `apertureStep`(+조임) |
 | `POST /api/camera/shutter` | 원격 촬영 `{status: ok\|canceled\|error\|timeout, ms}` |
+| `POST /api/camera/movie` | 동영상 `{action: start\|stop\|toggle}` → `{status: idle\|starting\|recording\|stopping, seconds, remainSeconds, error?}` (카메라가 동영상 모드로 바뀐 뒤 응답). 상태는 `GET /api/camera` 의 `movie` |
 | `POST /api/camera/focus` | 반셔터 `{action: start\|stop}` → `{focused}` (start 는 AF 가 끝날 때 응답) |
 | `POST /api/camera/focusdrive` | MF 초점 이동 `{direction: near\|far, speed}` (렌즈 지원 시, `focusDriveSupported`) |
 | `POST /api/camera/zoom` | 파워줌 `{direction: tele\|wide\|stop, speed}`, 또는 위치로 `{target: 0..1}` (카메라가 감속하며 멈춤, 상태는 `zoom`) |
@@ -162,6 +165,10 @@ EXPO_PUBLIC_CAMERA_HOST=127.0.0.1 npx expo start   # 시뮬레이터 + 목 서�
 | `GET /api/photos/{id}/preview` | JPEG 내장 MPF 미리보기 (예: 1920x1080), 회전 미적용 |
 | `GET /api/photos/{id}/full` | 원본 JPEG (~4MB), 회전 미적용 |
 | `GET /api/photos/{id}/raw` | 원본 ARW (~20MB) |
+| `POST /api/photos/delete` | `{ids:[...]}` 사진 삭제 (JPEG+RAW, 카메라 미디어 인덱스 경유) → `{deleted:[...], failed:[...]}` |
+| `GET /api/movies?offset=&limit=` | 최신순 MP4 동영상 목록 `{total, offset, items:[{id, name, size, date(ms), duration(초)}]}` (`MP_ROOT/100ANV01/MAH04899.MP4` → id `10004899`) |
+| `GET /api/movies/{id}/thumb` | 카메라가 만든 THM 썸네일 160x120 (4:3 안에 16:9 영상, 위아래 검은 띠) |
+| `GET /api/movies/{id}/file` | MP4 원본, HTTP Range 지원 — `<video>`가 받으면서 재생·탐색 |
 | `GET /api/liveview` | 라이브뷰 MJPEG (`multipart/x-mixed-replace`), 640x360 |
 | `GET /api/liveview.jpg` | 최신 라이브뷰 프레임 1장 |
 | `GET /api/debug/*` | 디버그 빌드 전용: `exit`, `stats`, `liveview?w=&h=&rate=&interval=`, `blob?size=` |

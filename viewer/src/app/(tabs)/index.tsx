@@ -8,7 +8,17 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { HoldButton, PositionBar, RepeatButton, ScrubChip, ZoomRocker, type ScrubOption } from '@/components/Controls';
 import { LiveView } from '@/components/LiveView';
 import { WheelSheet, type Wheel } from '@/components/WheelSheet';
-import { aspectRatio, formatEv, rollToDegrees, rotateArea, unrotatePoint, type CameraChanges, type CameraState, type PhotoItem } from '@/lib/camera';
+import {
+  aspectRatio,
+  formatDuration,
+  formatEv,
+  rollToDegrees,
+  rotateArea,
+  unrotatePoint,
+  type CameraChanges,
+  type CameraState,
+  type PhotoItem,
+} from '@/lib/camera';
 import { ThumbImage } from '@/components/ThumbImage';
 import { useCamera } from '@/lib/CameraProvider';
 import {
@@ -21,6 +31,7 @@ import {
   sceneModeName,
   whiteBalanceName,
 } from '@/lib/labels';
+import { useMoviePlaying } from '@/lib/playback';
 import { colors } from '@/lib/theme';
 
 const STATE_POLL_MS = 1000;
@@ -59,6 +70,7 @@ export default function ShootScreen() {
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
   const [shooting, setShooting] = useState(false);
+  const [recPending, setRecPending] = useState(false);
   const [af, setAf] = useState<AfState>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [latest, setLatest] = useState<PhotoItem | null>(null);
@@ -66,6 +78,7 @@ export default function ShootScreen() {
   // the live view follows the latest shot, and a button turns it by hand
   const [manualRotation, setManualRotation] = useState(0);
   const latestId = useRef<number | null>(null);
+  const moviePlaying = useMoviePlaying();
 
   // Keep the settings in sync with the camera (its own dials can change them too)
   useFocusEffect(
@@ -116,6 +129,27 @@ export default function ShootScreen() {
       flash(`설정 실패: ${String(e)}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Movie: the camera reopens in movie mode first, so starting and stopping take a second or two
+  const movieStatus = state?.movie?.status ?? 'idle';
+  const movieActive = movieStatus !== 'idle';
+  const recording = connected && movieStatus === 'recording';
+  const recSwitching = recPending || movieStatus === 'starting' || movieStatus === 'stopping';
+  const toggleMovie = async () => {
+    if (recSwitching) return;
+    const action = movieStatus === 'recording' ? 'stop' : 'start';
+    setRecPending(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const movie = await client.movie(action);
+      setState((s) => (s ? { ...s, movie } : s));
+      if (movie.error) flash(`녹화 실패: ${movie.error}`);
+    } catch (e) {
+      flash(`녹화 실패: ${String(e)}`);
+    } finally {
+      setRecPending(false);
     }
   };
 
@@ -300,8 +334,8 @@ export default function ShootScreen() {
       label="반셔터 (누르고 있으면 초점 고정)"
       onStart={halfPressStart}
       onStop={halfPressEnd}
-      disabled={!connected}
-      style={{ ...styles.af, borderColor: afColor }}
+      disabled={!connected || movieActive}
+      style={{ ...styles.af, borderColor: afColor, ...(movieActive ? styles.disabled : null) }}
       pressedStyle={styles.afPressed}>
       {af === 'focusing' ? (
         <ActivityIndicator size="small" color={colors.text} />
@@ -311,11 +345,33 @@ export default function ShootScreen() {
     </HoldButton>
   );
 
+  const recButton = (
+    <Pressable
+      style={({ pressed }) => [
+        styles.rec,
+        recording && styles.recRecording,
+        pressed && styles.afPressed,
+        !connected && styles.disabled,
+      ]}
+      onPress={toggleMovie}
+      disabled={!connected}
+      accessibilityRole="button"
+      accessibilityLabel={recording ? '녹화 정지' : '동영상 녹화'}>
+      {recSwitching ? (
+        <ActivityIndicator size="small" color={colors.text} />
+      ) : (
+        <View style={[styles.recMark, recording && styles.recMarkStop]} />
+      )}
+    </Pressable>
+  );
+
+  // No stills while a movie is being recorded
+  const shutterDisabled = !connected || movieActive;
   const shutter = (
     <Pressable
-      style={[styles.shutterRing, !connected && styles.disabled]}
+      style={[styles.shutterRing, shutterDisabled && styles.disabled]}
       onPress={shoot}
-      disabled={!connected}
+      disabled={shutterDisabled}
       accessibilityRole="button"
       accessibilityLabel="셔터">
       {({ pressed }) => (
@@ -342,7 +398,7 @@ export default function ShootScreen() {
       <Text style={styles.statusText} numberOfLines={1}>
         {connected ? info?.model : '연결 안 됨'}
       </Text>
-      {/* Battery and shots left, as on the camera's own screen */}
+      {/* Battery and shots left (recording time left during a movie), as on the camera's own screen */}
       {connected && s?.battery !== undefined && s.battery >= 0 && (
         <View style={styles.statusItem}>
           <Ionicons
@@ -353,9 +409,13 @@ export default function ShootScreen() {
           <Text style={[styles.statusText, s.battery <= 15 && { color: colors.danger }]}>{s.battery}%</Text>
         </View>
       )}
-      {connected && s?.shotsLeft !== undefined && s.shotsLeft >= 0 && (
+      {connected && !movieActive && s?.shotsLeft !== undefined && s.shotsLeft >= 0 && (
         <Text style={styles.statusText}>{s.shotsLeft}장</Text>
       )}
+      {connected && movieActive && s?.movie && s.movie.remainSeconds >= 0 && (
+        <Text style={styles.statusText}>남은 {formatDuration(s.movie.remainSeconds)}</Text>
+      )}
+      {recording && <Text style={[styles.statusText, styles.recTime]}>REC {formatDuration(s?.movie?.seconds ?? 0)}</Text>}
       {busy && <ActivityIndicator size="small" color={colors.accent} style={styles.busy} />}
     </View>
   );
@@ -390,8 +450,10 @@ export default function ShootScreen() {
 
   const live = (
     <View style={liveBox}>
-      {connected ? (
+      {connected && !moviePlaying ? (
         <LiveView url={client.liveViewUrl()} rotation={rotation} style={liveBox} />
+      ) : connected ? (
+        <View style={liveBox} />
       ) : (
         <Pressable style={[styles.offline, liveBox]} onPress={() => router.push('/settings')} accessibilityRole="button">
           <Ionicons name="wifi-outline" size={30} color={colors.textDim} />
@@ -455,6 +517,7 @@ export default function ShootScreen() {
           )}
           {/* Always reachable, like the shutter side of a camera app */}
           <View style={[styles.captureColumn, { width: CAPTURE_COLUMN_W }]}>
+            {recButton}
             {afButton}
             {shutter}
             {latestThumb}
@@ -477,9 +540,13 @@ export default function ShootScreen() {
           </View>
           {/* The shutter stays put while the settings scroll */}
           <View style={styles.captureBar}>
-            {latestThumb}
+            {/* Equal sides keep the shutter centred */}
+            <View style={styles.captureSide}>{latestThumb}</View>
             {shutter}
-            {afButton}
+            <View style={[styles.captureSide, styles.captureSideRight]}>
+              {afButton}
+              {recButton}
+            </View>
           </View>
         </View>
       )}
@@ -657,6 +724,7 @@ function withCurrent(values: string[], current: string) {
 
 const same = (v: string) => ({ value: v, label: v });
 
+
 /** Largest box of {@code aspect} (w/h) that fits in w x h. */
 function fit(w: number, h: number, aspect: number) {
   return w / h > aspect ? { width: h * aspect, height: h } : { width: w, height: w / aspect };
@@ -756,6 +824,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
   },
+  captureSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  captureSideRight: { justifyContent: 'flex-end', gap: 12 },
   captureColumn: { alignItems: 'center', justifyContent: 'space-evenly', paddingVertical: 6 },
   shutterRing: {
     width: 74,
@@ -784,6 +854,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+  rec: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  recRecording: { borderColor: colors.danger },
+  recMark: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.danger },
+  recMarkStop: { width: 16, height: 16, borderRadius: 3 },
+  recTime: { color: colors.danger, fontVariant: ['tabular-nums'] },
   afPressed: { backgroundColor: 'rgba(255,255,255,0.16)' },
   afLabel: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
   thumb: {

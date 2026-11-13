@@ -17,6 +17,7 @@ export default function RootLayout() {
         }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="photo/[id]" options={{ title: '사진' }} />
+        <Stack.Screen name="movie/[id]" options={{ title: '동영상' }} />
       </Stack>
     </CameraProvider>
   );

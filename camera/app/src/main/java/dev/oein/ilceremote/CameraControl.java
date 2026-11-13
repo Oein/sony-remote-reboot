@@ -30,9 +30,11 @@ public class CameraControl {
     private static final long STEP_TIMEOUT_MS = 700;
     private static final long SETTLE_TIMEOUT_MS = 1000;
     private static final int MAX_STEPS = 40;
+    private static final long MOVIE_SWITCH_TIMEOUT_MS = 12000;
 
     private final LiveView camera;
     private final ShootingControls controls;
+    private final MovieRecorder movie;
     /** One shutter release at a time. */
     private final Object shutterLock = new Object();
     /** Half-press held from the phone: direct shutter is off and focus is locked. UI thread only. */
@@ -48,6 +50,56 @@ public class CameraControl {
     public CameraControl(LiveView camera, ShootingControls controls) {
         this.camera = camera;
         this.controls = controls;
+        movie = new MovieRecorder(camera, controls);
+    }
+
+    MovieRecorder movie() {
+        return movie;
+    }
+
+    /** Movie button from the camera. UI thread. */
+    void toggleMovie() {
+        CameraEx cameraEx = camera.getCamera();
+        if (cameraEx != null && !movie.isActive()) {
+            // A half-press held from the phone keeps direct shutter off; let it go first
+            releaseFocus(cameraEx);
+        }
+        movie.toggle();
+    }
+
+    /**
+     * Movie recording: "start", "stop" or "toggle". Returns the movie state once the camera has
+     * finished switching (or after a while, still "starting" / "stopping").
+     */
+    public JSONObject movie(final String action) throws Exception {
+        camera.call(new LiveView.CameraTask<Void>() {
+            @Override
+            public Void run(CameraEx cameraEx) {
+                if ("start".equals(action)) {
+                    if (!movie.isActive()) {
+                        toggleMovie();
+                    }
+                } else if ("stop".equals(action)) {
+                    movie.stop();
+                } else if ("toggle".equals(action)) {
+                    toggleMovie();
+                } else {
+                    throw new IllegalArgumentException("action must be start, stop or toggle");
+                }
+                return null;
+            }
+        }, CALL_TIMEOUT_MS);
+        long deadline = System.currentTimeMillis() + MOVIE_SWITCH_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
+            int status = movie.getStatus();
+            if (status != MovieRecorder.STARTING && status != MovieRecorder.STOPPING) {
+                break;
+            }
+            Thread.sleep(100);
+        }
+        JSONObject result = movie.state();
+        Logger.info("Remote movie " + action + ": " + result);
+        return result;
     }
 
     /**
@@ -158,6 +210,7 @@ public class CameraControl {
         state.put("roll", OrientationWatcher.getRoll());
         state.put("orientation", OrientationWatcher.getDegrees());
         state.put("af", afJson());
+        state.put("movie", movie.state());
         return state;
     }
 
@@ -380,6 +433,10 @@ public class CameraControl {
      * (with it on, the AF callback never arrives), so it is stopped while the lock is held.
      */
     public JSONObject focus(final boolean start) throws Exception {
+        if (start && movie.isActive()) {
+            // Direct shutter is off while recording, and the camera keeps focusing on its own
+            return new JSONObject().put("focusing", false).put("focused", false).put("timeout", false);
+        }
         final boolean[] focused = { false };
         final CountDownLatch done = new CountDownLatch(1);
         camera.call(new LiveView.CameraTask<Void>() {
@@ -443,6 +500,9 @@ public class CameraControl {
      * phone is holding focus, direct shutter is already off and the locked focus is used.
      */
     public JSONObject shoot() throws Exception {
+        if (movie.isActive()) {
+            return new JSONObject().put("status", "recording").put("ms", 0);
+        }
         synchronized (shutterLock) {
             final int[] status = { -1 };
             final CountDownLatch done = new CountDownLatch(1);

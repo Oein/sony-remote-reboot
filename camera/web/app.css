@@ -164,6 +164,13 @@ body[data-layout=side] #zoom { margin: 8px auto 0; }
 .af-label { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
 #af.focused { border-color: var(--ok); color: var(--ok); }
 #af.failed { border-color: var(--danger); color: var(--danger); }
+#rec { width: 50px; height: 50px; border-radius: 25px; border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: center; }
+#rec:active { background: rgba(255, 255, 255, 0.16); }
+#rec .rec-mark { width: 20px; height: 20px; border-radius: 10px; background: var(--danger); transition: border-radius 0.15s, width 0.15s, height 0.15s; }
+#rec.recording { border-color: var(--danger); }
+#rec.recording .rec-mark { width: 16px; height: 16px; border-radius: 3px; }
+#rec.busy .rec-mark { display: none; }
+#rec-time { color: var(--danger); font-variant-numeric: tabular-nums; }
 #latest { width: 50px; height: 50px; border-radius: 10px; overflow: hidden; background: var(--panel) center/cover no-repeat; border: var(--hair) solid var(--hairline); }
 #latest.has-photo .ion { display: none; }
 .disabled-control { opacity: 0.35; pointer-events: none; }
@@ -209,6 +216,28 @@ body[data-layout=overlay] #controls, body[data-layout=side] #controls { display:
 .cell.selected::after { content: "\f21d"; font-family: Ionicons; position: absolute; right: 5px; bottom: 5px; width: 22px; height: 22px; border-radius: 11px; background: var(--accent);
   border: 1.5px solid #fff; color: #fff; font-size: 14px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
 #grid-footer { padding: 20px; text-align: center; color: var(--dim); font-size: 13px; }
+/* 사진 | 동영상 in the gallery's title bar */
+.segmented { display: flex; padding: 2px; border-radius: 9px; background: rgba(255, 255, 255, 0.1); }
+.segmented button { padding: 4px 16px; border-radius: 7px; color: var(--dim); font-size: 14px; font-weight: 600; }
+.segmented button.active { background: rgba(255, 255, 255, 0.22); color: var(--text); }
+#movie-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+#movie-grid { display: grid; gap: 2px; }
+/* The camera's thumbnail is 4:3 with the 16:9 picture letterboxed in it: show just the picture */
+#movie-grid .cell { aspect-ratio: 16 / 9; background-size: 100% auto; cursor: pointer; }
+#movie-footer { padding: 20px; text-align: center; color: var(--dim); font-size: 13px; }
+#movie-footer.error { color: var(--danger); }
+.cell .duration { position: absolute; right: 4px; bottom: 4px; padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums; }
+.cell .play { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 15px; background: rgba(0, 0, 0, 0.5); }
+.cell .play::after { content: ""; position: absolute; left: 12px; top: 9px; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent #fff; }
+/* Header above the video, not on it: the video's own controls have buttons in its corners */
+#player { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; background: #000; }
+#player video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+#player-header { order: -1; flex: none; padding: calc(var(--safe-top) + 6px) calc(var(--safe-right) + 4px) 6px calc(var(--safe-left) + 12px); display: flex; align-items: center;
+  gap: 10px; }
+#player { padding-bottom: var(--safe-bottom); }
+#player-header b { flex: 1; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#player-save { color: var(--text); text-decoration: none; }
 #grid-footer.error { color: var(--danger); padding: 16px; }
 body.selecting #gallery { bottom: 0; }
 body.selecting #tabs { display: none; }
@@ -269,6 +298,8 @@ body.selecting .pill-toast { bottom: calc(52px + var(--safe-bottom) + 12px); }
 .raw-button .ion { font-size: 15px; }
 .raw-button:disabled { opacity: 0.3; cursor: default; }
 .tool-group { display: flex; align-items: center; gap: 4px; }
+.delete-button { color: var(--danger); }
+.delete-button:disabled { opacity: 0.3; cursor: default; }
 .save-wrap .progress { width: 150px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 .save-wrap .progress-track { width: 100%; background: rgba(255, 255, 255, 0.2); }
 .save-wrap .progress-text { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -389,6 +420,11 @@ body[data-layout=stage] #dial .chip { padding: 12px 4px 10px; border-top: 0; bor
 body[data-layout=stage] #dial .chip:first-child { border-left: 0; }
 body[data-layout=stage] #capture { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 24px; width: 100%; max-width: 1132px; margin: 0 auto;
   padding: 14px 16px 18px; }
+.capture-extra { display: flex; align-items: center; gap: 12px; }
+body[data-layout=portrait] #capture, body[data-layout=desk] #capture { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+body[data-layout=portrait] #capture > #latest, body[data-layout=desk] #capture > #latest { justify-self: start; }
+body[data-layout=portrait] .capture-extra, body[data-layout=desk] .capture-extra { justify-self: end; }
+body[data-layout=overlay] .capture-extra, body[data-layout=side] .capture-extra { flex-direction: column-reverse; }
 .capture-group { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .capture-group.right { justify-content: flex-end; }
 body[data-layout=stage] #mf-row { flex: 0 1 380px; min-width: 0; margin: 0; }

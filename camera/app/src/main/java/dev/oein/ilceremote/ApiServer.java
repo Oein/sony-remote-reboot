@@ -13,6 +13,8 @@ public class ApiServer extends NanoHTTPD {
 
     private static final java.util.regex.Pattern PHOTO_PATH =
             java.util.regex.Pattern.compile("^/api/photos/(\\d+)(?:/(thumb|micro|small|preview|full|raw))?$");
+    private static final java.util.regex.Pattern MOVIE_PATH =
+            java.util.regex.Pattern.compile("^/api/movies/(\\d+)/(thumb|file)$");
 
     private final LiveView liveView;
     private final PhotoLibrary photos;
@@ -23,6 +25,7 @@ public class ApiServer extends NanoHTTPD {
     }
 
     private ScreenCapture screenCapture;
+    private final MovieLibrary movies = new MovieLibrary();
 
 
     public void setScreenCapture(ScreenCapture capture) {
@@ -56,6 +59,10 @@ public class ApiServer extends NanoHTTPD {
             if ("/api/camera/shutter".equals(uri) && session.getMethod() == Method.POST) {
                 return json(camera.shoot());
             }
+            if ("/api/camera/movie".equals(uri) && session.getMethod() == Method.POST) {
+                JSONObject request = new JSONObject(body(session));
+                return json(camera.movie(request.optString("action", "toggle")));
+            }
             if ("/api/camera/focus".equals(uri) && session.getMethod() == Method.POST) {
                 JSONObject request = new JSONObject(body(session));
                 return json(camera.focus(!"stop".equals(request.optString("action", "start"))));
@@ -85,9 +92,22 @@ public class ApiServer extends NanoHTTPD {
                 int limit = Math.max(1, Math.min(500, intParam(params, "limit", 100)));
                 return json(photos.list(offset, limit));
             }
+            if ("/api/photos/delete".equals(uri) && session.getMethod() == Method.POST) {
+                return json(deletePhotos(new JSONObject(body(session)).getJSONArray("ids")));
+            }
             java.util.regex.Matcher photo = PHOTO_PATH.matcher(uri);
             if (photo.matches()) {
                 return photo(Long.parseLong(photo.group(1)), photo.group(2));
+            }
+            if ("/api/movies".equals(uri)) {
+                java.util.Map<String, String> params = session.getParms();
+                int offset = Math.max(0, intParam(params, "offset", 0));
+                int limit = Math.max(1, Math.min(500, intParam(params, "limit", 100)));
+                return json(movies.list(offset, limit));
+            }
+            java.util.regex.Matcher movie = MOVIE_PATH.matcher(uri);
+            if (movie.matches()) {
+                return movie(Long.parseLong(movie.group(1)), movie.group(2), session);
             }
             if ("/api/liveview".equals(uri)) {
                 return liveViewStream();
@@ -250,6 +270,15 @@ public class ApiServer extends NanoHTTPD {
             return png == null ? notFound() : newFixedLengthResponse(Response.Status.OK, "image/png",
                     new java.io.ByteArrayInputStream(png), png.length);
         }
+        if ("/api/debug/beep".equals(uri)) {
+            // Try a beep method (tone|track|sony); set=1 also makes it the one movies use
+            String method = params.get("method") != null ? params.get("method") : Beeper.getMethod();
+            if ("1".equals(params.get("set"))) {
+                Beeper.setMethod(method);
+            }
+            Beeper.play(method, intParam(params, "count", 1));
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "Beep " + method + "\n");
+        }
         if ("/api/debug/blob".equals(uri)) {
             // Raw throughput test: stream `size` zero bytes
             int size = intParam(params, "size", 1000000);
@@ -300,6 +329,90 @@ public class ApiServer extends NanoHTTPD {
         // A photo's content never changes for a given id
         response.addHeader("Cache-Control", "max-age=86400");
         response.addHeader("Access-Control-Allow-Origin", "*");
+        return response;
+    }
+
+    /** {ids: [...]} -> {deleted: [...], failed: [...]}. */
+    private JSONObject deletePhotos(org.json.JSONArray ids) throws JSONException {
+        org.json.JSONArray deleted = new org.json.JSONArray();
+        org.json.JSONArray failed = new org.json.JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            long id = ids.getLong(i);
+            (photos.delete(id) ? deleted : failed).put(id);
+        }
+        Logger.info("Deleted " + deleted.length() + " photos, " + failed.length() + " failed");
+        return new JSONObject().put("deleted", deleted).put("failed", failed);
+    }
+
+    /**
+     * A movie's thumbnail, or the movie itself with byte ranges, so a <video> plays and seeks it
+     * while it streams instead of downloading it first.
+     */
+    private Response movie(long id, String kind, IHTTPSession session) throws java.io.IOException {
+        java.io.File file = "thumb".equals(kind) ? movies.thumbnail(id) : movies.file(id);
+        if (file == null) {
+            return notFound();
+        }
+        Response response;
+        if ("thumb".equals(kind)) {
+            response = newFixedLengthResponse(Response.Status.OK, "image/jpeg",
+                    new java.io.FileInputStream(file), file.length());
+        } else {
+            response = fileRange(file, "video/mp4", session.getHeaders().get("range"));
+            response.addHeader("Content-Disposition", "inline; filename=\"" + file.getName() + "\"");
+        }
+        response.addHeader("Cache-Control", "max-age=86400");
+        response.addHeader("Access-Control-Allow-Origin", "*");
+        return response;
+    }
+
+    /** The whole file, or the one range of "bytes=start-[end]" (what browsers send). */
+    private static Response fileRange(java.io.File file, String mime, String range) throws java.io.IOException {
+        long length = file.length();
+        long start = 0;
+        long end = length - 1;
+        boolean partial = false;
+        if (range != null && range.startsWith("bytes=") && range.indexOf(',') < 0) {
+            String spec = range.substring(6).trim();
+            int dash = spec.indexOf('-');
+            try {
+                if (dash == 0) {
+                    // Suffix: the last n bytes
+                    start = Math.max(0, length - Long.parseLong(spec.substring(1)));
+                } else if (dash > 0) {
+                    start = Long.parseLong(spec.substring(0, dash));
+                    if (dash < spec.length() - 1) {
+                        end = Math.min(end, Long.parseLong(spec.substring(dash + 1)));
+                    }
+                }
+                partial = true;
+            } catch (NumberFormatException e) {
+                partial = false;
+            }
+            if (partial && (start >= length || start > end)) {
+                Response response = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, MIME_PLAINTEXT, "");
+                response.addHeader("Content-Range", "bytes */" + length);
+                return response;
+            }
+        }
+        java.io.FileInputStream in = new java.io.FileInputStream(file);
+        if (!partial) {
+            Response response = newFixedLengthResponse(Response.Status.OK, mime, in, length);
+            response.addHeader("Accept-Ranges", "bytes");
+            return response;
+        }
+        long skipped = 0;
+        while (skipped < start) {
+            long n = in.skip(start - skipped);
+            if (n <= 0) {
+                in.close();
+                throw new java.io.IOException("Cannot seek " + file);
+            }
+            skipped += n;
+        }
+        Response response = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, in, end - start + 1);
+        response.addHeader("Accept-Ranges", "bytes");
+        response.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + length);
         return response;
     }
 

@@ -41,7 +41,8 @@
           "savePhotosPermission": "카메라에서 받은 사진을 사진 앱에 저장합니다.",
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "expo-video"
     ],
     "scheme": "ilceremote",
     "backgroundColor": "#000000",

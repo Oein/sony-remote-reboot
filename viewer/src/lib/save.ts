@@ -16,12 +16,21 @@ export async function canSaveToPhotos() {
  * {@code total} in the progress is -1 until the camera reports the size.
  */
 export async function saveOriginal(client: CameraClient, id: number, onProgress?: (p: DownloadProgress) => void) {
-  // A folder of its own: the file takes the name the camera sends (_DSC1234.JPG)
-  const dir = new Directory(Paths.cache, 'originals', String(id));
+  await saveToPhotos(client.fullUrl(id), `photo-${id}`, onProgress);
+}
+
+/** Downloads a movie (MP4) from the camera and adds it to the Photos library. */
+export async function saveMovie(client: CameraClient, id: number, onProgress?: (p: DownloadProgress) => void) {
+  await saveToPhotos(client.movieUrl(id), `movie-${id}`, onProgress);
+}
+
+async function saveToPhotos(url: string, key: string, onProgress?: (p: DownloadProgress) => void) {
+  // A folder of its own: the file takes the name the camera sends (_DSC1234.JPG, MAH04899.MP4)
+  const dir = new Directory(Paths.cache, 'originals', key);
   if (dir.exists) dir.delete();
   dir.create({ intermediates: true });
   try {
-    const task = File.createDownloadTask(client.fullUrl(id), dir, {
+    const task = File.createDownloadTask(url, dir, {
       onProgress: ({ bytesWritten, totalBytes }) => onProgress?.({ written: bytesWritten, total: totalBytes }),
     });
     const file = await task.downloadAsync();

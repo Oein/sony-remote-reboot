@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatExposure, type CameraClient, type PhotoDetails, type PhotoItem } from '@/lib/camera';
 import { ThumbImage } from '@/components/ThumbImage';
 import { useCamera } from '@/lib/CameraProvider';
+import { DELETE_DETAIL, deletePhotos, deleteQuestion, usePhotosDeleted } from '@/lib/deletions';
 import { canSaveToPhotos, megabytes, saveOriginal, type DownloadProgress } from '@/lib/save';
 import { colors } from '@/lib/theme';
 
@@ -126,6 +128,39 @@ export default function PhotoScreen() {
     },
     [box.w, items, index],
   );
+
+  // Deleted (here): the next photo takes its place, the previous one if it was the last
+  usePhotosDeleted((ids) => {
+    if (!items) return;
+    const gone = new Set(ids);
+    const next = items.filter((item) => !gone.has(item.id));
+    if (next.length === 0) {
+      router.back();
+      return;
+    }
+    const nextIndex = Math.min(index, next.length - 1);
+    setItems(next);
+    setIndex(nextIndex);
+    setZoomed(false);
+    requestAnimationFrame(() => pager.current?.scrollToOffset({ offset: nextIndex * box.w, animated: false }));
+  });
+
+  const deleteCurrent = () => {
+    const item = items?.[index];
+    if (!item) return;
+    Alert.alert(deleteQuestion(1), DELETE_DETAIL, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () =>
+          deletePhotos(client, [item.id]).then(
+            (r) => r.failed.length && Alert.alert('삭제하지 못했어요'),
+            (e) => Alert.alert('삭제 실패', String(e)),
+          ),
+      },
+    ]);
+  };
 
   const current = items?.[index];
   const currentDetails = current ? details[current.id] : undefined;
@@ -266,13 +301,18 @@ export default function PhotoScreen() {
             />
           )}
           <View style={[styles.toolbar, landscape && styles.toolbarCompact, landscape && { paddingLeft: insets.left + 12, paddingRight: insets.right + 12 }]}>
-            <Pressable
-              onPress={() => setShowInfo((v) => !v)}
-              style={styles.toolButton}
-              accessibilityRole="button"
-              accessibilityLabel="사진 정보">
-              <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={26} color={colors.text} />
-            </Pressable>
+            <View style={styles.toolGroup}>
+              <Pressable
+                onPress={() => setShowInfo((v) => !v)}
+                style={styles.toolButton}
+                accessibilityRole="button"
+                accessibilityLabel="사진 정보">
+                <Ionicons name={showInfo ? 'information-circle' : 'information-circle-outline'} size={26} color={colors.text} />
+              </Pressable>
+              <Pressable onPress={deleteCurrent} style={styles.toolButton} accessibilityRole="button" accessibilityLabel="이 사진 삭제">
+                <Ionicons name="trash-outline" size={22} color={colors.danger} />
+              </Pressable>
+            </View>
             <Text style={styles.counter}>
               {index + 1} / {items.length}
             </Text>
@@ -468,6 +508,7 @@ const styles = StyleSheet.create({
   backButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' },
   topTitle: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600', textAlign: 'center', marginRight: 46, textShadowColor: '#000', textShadowRadius: 4 },
   toolButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  toolGroup: { flexDirection: 'row', alignItems: 'center' },
   counter: { color: colors.textDim, fontSize: 13, fontVariant: ['tabular-nums'] },
   saveWrap: { minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
   progress: { width: 150, gap: 4, alignItems: 'flex-end' },

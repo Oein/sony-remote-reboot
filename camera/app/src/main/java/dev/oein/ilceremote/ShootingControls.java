@@ -191,6 +191,11 @@ class ShootingControls {
         return new int[] { focusPosition, focusMaxPosition };
     }
 
+    /** The camera was reopened (movie / still): register the listeners again even if it is the same object. */
+    void forgetCamera() {
+        listenerCamera = null;
+    }
+
     /** Registers zoom / focus listeners on the current camera (again after it is reopened). UI thread. */
     void listenToCamera(CameraEx camera) {
         if (camera == null || camera == listenerCamera) {
@@ -279,7 +284,7 @@ class ShootingControls {
         return rects.toArray(new android.graphics.Rect[rects.size()]);
     }
 
-    /** Movie button: toggle between autofocus (AF-S) and manual focus. */
+    /** Play button: toggle between autofocus (AF-S) and manual focus. */
     void toggleManualFocus() {
         CameraEx camera = liveView.getCamera();
         if (camera == null) {

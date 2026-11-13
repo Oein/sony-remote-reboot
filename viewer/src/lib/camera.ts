@@ -61,6 +61,8 @@ export type CameraState = {
   wbGMMin?: number;
   wbGMMax?: number;
   /** Latest AF result; areas are fractions of the (unrotated) frame. */
+  /** Movie recording; starting / stopping while the camera switches to or from movie mode. */
+  movie?: MovieState;
   af?: { status: 'lock' | 'warn' | 'working' | 'clear' | 'continuous' | 'none'; areas: AfArea[] };
   /** Camera battery 0..100, -1 if unknown. */
   battery?: number;
@@ -125,6 +127,28 @@ export type PhotoDetails = {
   iso: number;
 };
 
+export type MovieState = {
+  status: 'idle' | 'starting' | 'recording' | 'stopping';
+  seconds: number;
+  /** Recording time left on the card, -1 if not known yet. */
+  remainSeconds: number;
+  error?: string;
+};
+
+/** An MP4 movie on the card (AVCHD isn't listed). */
+export type MovieItem = {
+  id: number;
+  /** File name, e.g. MAH04899.MP4 */
+  name: string;
+  size: number;
+  /** Camera's local wall-clock time as epoch ms, like photo dates. */
+  date: number;
+  /** Seconds, 0 if unknown. */
+  duration: number;
+};
+
+export type MovieList = { total: number; offset: number; items: MovieItem[] };
+
 export type ShutterResult = { status: 'ok' | 'canceled' | 'error' | 'timeout'; ms: number };
 
 export class CameraError extends Error {}
@@ -167,6 +191,8 @@ export function createCameraClient(host: string) {
     /** Shutter/aperture steps wait for the camera, so allow extra time. */
     apply: (changes: CameraChanges) => post<CameraState>(host, '/api/camera', changes, 20000),
     shoot: () => post<ShutterResult>(host, '/api/camera/shutter', undefined, 35000),
+    /** Movie recording; resolves once the camera has switched modes (a second or two). */
+    movie: (action: 'start' | 'stop' | 'toggle') => post<MovieState>(host, '/api/camera/movie', { action }, 15000),
     /** Half-press: "start" focuses and locks (resolves when AF is done), "stop" releases. */
     focus: (action: 'start' | 'stop') =>
       post<{ focusing: boolean; focused: boolean; timeout: boolean }>(host, '/api/camera/focus', { action }, 6000),
@@ -180,12 +206,20 @@ export function createCameraClient(host: string) {
       post<MagnifierState>(host, '/api/camera/magnify', { action, dx, dy }),
     photos: (offset: number, limit: number) => request<PhotoList>(host, `/api/photos?offset=${offset}&limit=${limit}`),
     photo: (id: number) => request<PhotoDetails>(host, `/api/photos/${id}`),
+    /** Deletes photos (JPEG and RAW) from the card for good. */
+    deletePhotos: (ids: number[]) =>
+      post<{ deleted: number[]; failed: number[] }>(host, '/api/photos/delete', { ids }, 60000),
     liveViewUrl: () => `${baseUrl(host)}/api/liveview`,
     // Photo ids can be reused after the card is formatted, and images are cached by URL, so the
     // capture time goes into the URL as a version (the camera ignores the query)
     smallUrl: (id: number, version?: string | number) => photoUrl(host, id, 'small', version),
     previewUrl: (id: number, version?: string | number) => photoUrl(host, id, 'preview', version),
     fullUrl: (id: number) => `${baseUrl(host)}/api/photos/${id}/full`,
+    movies: (offset: number, limit: number) => request<MovieList>(host, `/api/movies?offset=${offset}&limit=${limit}`),
+    /** The camera's 160x120 thumbnail: the 16:9 picture letterboxed in 4:3. */
+    movieThumbUrl: (item: MovieItem) => `${baseUrl(host)}/api/movies/${item.id}/thumb?v=${item.date}`,
+    /** The MP4 itself; the camera serves byte ranges, so players stream and seek it. */
+    movieUrl: (id: number) => `${baseUrl(host)}/api/movies/${id}/file`,
   };
 }
 
@@ -197,6 +231,15 @@ function photoUrl(host: string, id: number, kind: string, version?: string | num
 export type CameraClient = ReturnType<typeof createCameraClient>;
 
 /** "1/250", "2\"" etc. from an exposure time in seconds. */
+/** 0:12, 29:00, 1:05:00 */
+export function formatDuration(seconds: number) {
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor(s / 60) % 60;
+  const ss = `${s % 60 < 10 ? '0' : ''}${s % 60}`;
+  return h > 0 ? `${h}:${m < 10 ? '0' : ''}${m}:${ss}` : `${m}:${ss}`;
+}
+
 export function formatExposure(seconds: number) {
   if (seconds <= 0) return '-';
   if (seconds >= 0.4) return `${Math.round(seconds * 10) / 10}"`;
